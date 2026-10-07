@@ -3,8 +3,8 @@
 const SITE = {
   doors: [
     { id: 'mdr', x: 400, lines: ['BRAIN', 'SEGMENTATION'], sub: '', href: 'mdr/index.html', live: true },
-    { id: 'wellness', x: 670, lines: ['ABOUT ME'], sub: '', room: 'room-wellness' },
-    { id: 'od', x: 940, lines: ['PROJECTS'], sub: '', href: 'gallery/index.html' },
+    { id: 'od', x: 670, lines: ['PROJECTS'], sub: '', href: 'gallery/index.html' },
+    { id: 'wellness', x: 940, lines: ['ABOUT ME'], sub: '', room: 'room-wellness' },
     { id: 'mail', x: 1210, lines: ['CONTACT'], sub: '', room: 'room-mail', phone: true },
   ],
   // Organisations, dates and names are placeholders: fill them in locally.
