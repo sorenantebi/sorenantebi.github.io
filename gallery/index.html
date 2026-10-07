@@ -242,7 +242,8 @@ input[type=range] { accent-color: var(--accent); width: 180px; }
 .plaque { transition: background .12s, color .12s; animation: signpulse 2.6s ease-in-out infinite; }
 .plaque.hover { background: var(--plaque-fg); color: var(--plaque); animation: none; box-shadow: 0 0 0 2px #3ee07a, 0 0 12px rgba(62,224,122,.6); }
 @keyframes signpulse { 0%, 100% { box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 0 0 0 rgba(62,224,122,0); } 50% { box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 0 0 4px rgba(62,224,122,.35); } }
-.prompt.hovertag { background: #3ee07a; color: #10261a; box-shadow: 0 0 0 2px #10261a; animation: none; }
+.prompt.hovertag { background: #3ee07a; color: #10261a; box-shadow: 0 0 0 2px #10261a; animation: none; z-index: 3; }
+.prompt.hovertag.from-left { transform: translate(0, -100%); }
 @media (prefers-reduced-motion: reduce) { .plaque { animation: none; } }
 
 /* directory entries styled as real buttons */
@@ -658,6 +659,6 @@ if (val_loss &lt; best_val_loss) { torch::save(model, best_model_path); }</pre>
 
 <div id="whiteout"></div>
 <script src="vision.js?v=1"></script>
-<script src="gallery.js?v=36"></script>
+<script src="gallery.js?v=37"></script>
 </body>
 </html>

@@ -283,7 +283,9 @@ function render() {
   if (hv && !same) {
     hoverTag.hidden = false; hoverTag.textContent = hv.exit ? 'Click to go back to the hallway' : 'Click to view';
     const b = hv.exit ? [DOOR_X, DOOR_Y] : hv.ex.box;
-    hoverTag.style.left = sx(hv.exit ? DOOR_X + DOOR_W / 2 : hv.ex.x) + 'px'; hoverTag.style.top = sy((hv.exit ? 172 : b[1]) - 4) + 'px';
+    // the exit tag starts at the door's left edge and runs right, so the screen edge can't clip it
+    hoverTag.classList.toggle('from-left', !!hv.exit);
+    hoverTag.style.left = sx(hv.exit ? DOOR_X - 4 : hv.ex.x) + 'px'; hoverTag.style.top = sy((hv.exit ? 172 : b[1]) - 4) + 'px';
   } else hoverTag.hidden = true;
 }
 

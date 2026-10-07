@@ -177,6 +177,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const W = 1510, H = 360, WALL_BASE = 280, FEET = 312;
 const DOOR_W = 36, DOOR_H = 70, DOOR_Y = WALL_BASE - DOOR_H;
 const SPR = 68, SPR_FOOT = 61, SPR_CX = 34;
+const COOLERS = [352, 1430], COOLER_TOP = WALL_BASE + 2 - 54;   // left edge of each 14x54 water cooler
+// red button at the end of the corridor: a cat pops up and spins (OH EE AA EE OO EE)
+const CAT_BTN = [1466, 192, 12, 14], CAT_X = 1462, CAT_BASE = WALL_BASE + 16;
+const CAT_SONG = ['OH', 'EE', 'AA', 'EE', 'OO', 'EE'], CAT_PITCH = { OH: 392, EE: 784, AA: 523, OO: 349 };
+// click-to-speak easter eggs: hit box (x, y, w, h) in world pixels, text, bubble height
+const EGGS = [
+  { box: [549, 139, 15, 13], text: 'QS2 babyyy', y: 92 },           // the open book on the Imperial crest
+  { box: [1048, 120, 68, 50], text: 'Hark upon the gale', y: 106 },  // the Wren Building painting
+];
 
 /* ---------- sprites (PixelLab) ---------- */
 const SRC = {
@@ -184,7 +193,7 @@ const SRC = {
   walk0: 'assets/char_walk_0.png?v=10', walk1: 'assets/char_walk_1.png?v=10', walk2: 'assets/char_walk_2.png?v=10',
   walk3: 'assets/char_walk_3.png?v=10', walk4: 'assets/char_walk_4.png?v=10', walk5: 'assets/char_walk_5.png?v=10',
   doorFrame: 'assets/door_frame.png', doorPanel: 'assets/door_panel.png',
-  phone: 'assets/phone.png?v=1',
+  phone: 'assets/phone.png?v=1', cat: 'assets/cat.png?v=1',
   cooler: 'assets/cooler.png', plant: 'assets/plant.png', bench: 'assets/bench.png',
   painting: 'assets/painting.png', crest: 'assets/crest_imperial.png?v=1', wm: 'assets/painting_wm.png?v=1',
 };
@@ -228,6 +237,8 @@ function paint() {
   // ceiling vents, fire alarm
   for (const x of [220, 790, 1350]) { R(x, 36, 24, 12, '#dcdcd4'); for (let i = 0; i < 3; i++) R(x + 2, 38 + i * 4, 20, 2, '#c7c7be'); }
   R(610, 88, 12, 16, '#c94b3e'); R(612, 90, 8, 4, '#e6806f'); R(614, 98, 4, 4, '#f0d8d2');
+  // cat button plate at the end of the corridor
+  R(CAT_BTN[0], CAT_BTN[1], CAT_BTN[2], CAT_BTN[3], '#a9a79e'); R(CAT_BTN[0] + 1, CAT_BTN[1] + 1, CAT_BTN[2] - 2, CAT_BTN[3] - 2, '#dedcd4');
   // directory board post
   R(20, 104, 4, 148, '#c3c1b8');
 
@@ -244,7 +255,7 @@ function paint() {
     drawDoor(g, d, 0);
   }
   // props
-  onFloor('cooler', 352);
+  COOLERS.forEach(x => onFloor('cooler', x));
   // Imperial College London shield on a wooden plaque
   R(531, 106, 50, 58, '#2b2018'); R(532, 107, 48, 56, '#6b4b33'); R(532, 107, 48, 1, '#8a6446'); R(532, 107, 1, 56, '#8a6446');
   put('crest', 537, 112);
@@ -253,7 +264,6 @@ function paint() {
   put('wm', 1048, 120);
   onFloor('plant', 1115);
   onFloor('plant', 1350);
-  onFloor('cooler', 1430);
 }
 
 function drawDoor(g, d, open) {
@@ -310,6 +320,9 @@ const doorEls = SITE.doors.map(d => {
 const prompt = document.createElement('div'); prompt.className = 'prompt'; prompt.hidden = true; labels.appendChild(prompt);
 const hoverTag = document.createElement('div'); hoverTag.className = 'prompt hovertag'; hoverTag.hidden = true; labels.appendChild(hoverTag);
 let hoverDoor = -1, phoneRingUntil = 0;
+const say = document.createElement('div'); say.className = 'prompt say'; say.hidden = true; labels.appendChild(say);
+const catSay = document.createElement('div'); catSay.className = 'prompt say'; catSay.hidden = true; labels.appendChild(catSay);
+EGGS.forEach(e => { e.el = document.createElement('div'); e.el.className = 'prompt say'; e.el.hidden = true; e.el.textContent = e.text; e.until = 0; labels.appendChild(e.el); });
 SITE.doors.forEach((d, i) => {
   const li = document.createElement('li'), db = document.createElement('button');
   db.innerHTML = '<span class="n"></span><span class="t"></span><span class="m"></span>';
@@ -461,7 +474,7 @@ for (const c of CONTACT_ROWS) {
 }
 
 /* ---------- state ---------- */
-const player = { x: 210, dir: 'down', step: 0, acc: 0, alpha: 1, lift: 0, target: null, pending: null, walking: false };
+const player = { x: 210, dir: 'down', step: 0, acc: 0, alpha: 1, lift: 0, target: null, pending: null, pendingCooler: null, walking: false };
 const doorOpen = SITE.doors.map(() => 0);
 const keys = { left: false, right: false };
 let s = 2, viewW = 720, top = 0, camX = 0, busy = false, openRoom = null, moved = false, ready = false;
@@ -479,6 +492,8 @@ function layout() {
   doorEls.forEach(el => { el.style.fontSize = (7 * s) + 'px'; el.style.padding = (1.8 * s) + 'px ' + (3.2 * s) + 'px'; });
   directory.style.fontSize = Math.round(7.8 * s) + 'px';
   prompt.style.fontSize = Math.max(10, 5.6 * s) + 'px';
+  say.style.fontSize = catSay.style.fontSize = Math.max(9, 4.8 * s) + 'px';
+  EGGS.forEach(e => { e.el.style.fontSize = say.style.fontSize; });
 }
 addEventListener('resize', layout);
 
@@ -489,6 +504,9 @@ function updateCam() {
 const sx = wx => (wx - camX) * s, sy = wy => top + wy * s;
 const doorCenter = d => d.x + DOOR_W / 2;
 const nearDoor = () => SITE.doors.findIndex(d => Math.abs(doorCenter(d) - player.x) < 22);
+const coolerSpot = i => COOLERS[i] - 12;   // where you stand to use it, facing right
+const nearCooler = () => COOLERS.findIndex((x, i) => Math.abs(coolerSpot(i) - player.x) < 14);
+let drinking = null, hoverCooler = -1, hoverEgg = null, hoverBtn = false, cat = null, audio = null;
 function noteMoved() { moved = true; }
 
 /* ---------- loop ---------- */
@@ -501,12 +519,13 @@ function frame(now) {
   if (!busy && !openRoom) {
     if (keys.left) vx -= 1;
     if (keys.right) vx += 1;
-    if (vx) { player.target = null; player.pending = null; }
+    if (vx) { player.target = null; player.pending = null; player.pendingCooler = null; }
     else if (player.target != null) {
       const dx = player.target - player.x;
       if (Math.abs(dx) < 2) {
         player.x = player.target; player.target = null;
-        if (player.pending != null) { const d = SITE.doors[player.pending]; player.pending = null; enter(d); }
+        if (player.pending != null) { const d = SITE.doors[player.pending]; player.pending = null; player.pendingCooler = null; enter(d); }
+        else if (player.pendingCooler != null) { const c = player.pendingCooler; player.pendingCooler = null; drink(c); }
       } else vx = Math.sign(dx);
     }
     if (vx) {
@@ -541,6 +560,9 @@ function render(now) {
       ctx.fillRect(cx - 36, 214, 2, 6); ctx.fillRect(cx - 40, 212, 2, 10); ctx.fillRect(cx + 34, 214, 2, 6); ctx.fillRect(cx + 38, 212, 2, 10);
     }
   }
+  if (drinking) drawDrink(ctx, ox, now);
+  drawCatButton(ctx, ox, now);
+  if (cat) drawCat(ctx, ox, now);
   if (hoverDoor >= 0 && !busy && !openRoom) {
     const d = SITE.doors[hoverDoor];
     const b = d.phone ? [d.x + DOOR_W / 2 - 32, 206, 64, 76] : [d.x - 4, DOOR_Y - 4, DOOR_W + 8, DOOR_H + 4];
@@ -548,13 +570,14 @@ function render(now) {
     ctx.strokeStyle = '#3ee07a'; ctx.lineWidth = 2; ctx.strokeRect(b[0] + ox + 1, b[1] + 1, b[2] - 2, b[3] - 1);
   }
   drawPlayer(ctx, ox);
+  if (drinking && drinking.cup === 'hand') drawCupInHand(ctx, ox, now);
 
   SITE.doors.forEach((d, i) => {
     doorEls[i].style.left = sx(doorCenter(d)) + 'px';
     doorEls[i].style.top = sy(170) + 'px';
   });
-  // centred between the left wall and the first door
-  directory.style.left = Math.max(sx(22), sx((22 + SITE.doors[0].x) / 2) - directory.offsetWidth / 2) + 'px';
+  // between the left wall and the first door, a little left of centre
+  directory.style.left = Math.max(sx(22), sx((22 + SITE.doors[0].x) / 2 - 24) - directory.offsetWidth / 2) + 'px';
   directory.style.top = sy(68) + 'px';
   const n = busy || openRoom ? -1 : nearDoor();
   if (n >= 0) {
@@ -570,6 +593,19 @@ function render(now) {
     hoverTag.hidden = false; hoverTag.textContent = d.phone ? 'Click to call' : 'Click to enter ' + d.lines.join(' ').toLowerCase();
     hoverTag.style.left = sx(doorCenter(d)) + 'px'; hoverTag.style.top = sy(160) + 'px';
   } else hoverTag.hidden = true;
+  EGGS.forEach(e => {
+    e.el.hidden = !(performance.now() < e.until && !openRoom);
+    if (!e.el.hidden) { e.el.style.left = sx(e.box[0] + e.box[2] / 2) + 'px'; e.el.style.top = sy(e.y) + 'px'; }
+  });
+  const syl = cat && catSyllable(now);
+  if (syl) {
+    catSay.hidden = false; catSay.textContent = syl;
+    catSay.style.left = sx(CAT_X) + 'px'; catSay.style.top = sy(CAT_BASE - 34) + 'px';
+  } else catSay.hidden = true;
+  if (drinking && drinking.say) {
+    say.hidden = false; say.textContent = drinking.say;
+    say.style.left = sx(player.x) + 'px'; say.style.top = sy(FEET - 80) + 'px';
+  } else say.hidden = true;
 }
 
 /* ---------- transitions ---------- */
@@ -643,7 +679,7 @@ const START_X = 210;
 async function toStart() {
   if (busy || openRoom) return;
   busy = true;
-  player.target = null; player.pending = null; keys.left = keys.right = false;
+  player.target = null; player.pending = null; player.pendingCooler = null; keys.left = keys.right = false;
   await white(true, 220);
   player.x = START_X; player.dir = 'down'; player.acc = 0; player.step = 0;
   await white(false, 320);
@@ -651,9 +687,102 @@ async function toStart() {
 }
 $('#tostart').addEventListener('click', e => { e.currentTarget.blur(); toStart(); });
 
+// easter egg: click a water cooler (or ↑ beside it) to walk up, fill a paper cup and drink
+function goToCooler(i) {
+  if (busy || openRoom) return;
+  player.target = coolerSpot(i); player.pending = null; player.pendingCooler = i; noteMoved();
+}
+async function drink(i) {
+  if (busy) return;
+  busy = true; player.x = coolerSpot(i); player.dir = 'right';
+  drinking = { i, t0: performance.now(), say: '', cup: 'tap' };
+  await sleep(reduced ? 0 : 1100);              // cup fills
+  drinking.cup = 'hand'; player.dir = 'down';
+  drinking.say = '*glug glug*';
+  await sleep(reduced ? 600 : 1000);
+  drinking.cup = null; drinking.say = 'Refreshed!';
+  busy = false;
+  const mine = drinking; await sleep(1400);
+  if (drinking === mine) drinking = null;
+}
+const CAT_UP = 300, CAT_SPIN = 3600, CAT_DOWN = 300, BEAT = 220;
+function pressCatButton() {
+  if (cat) return;
+  cat = { t0: performance.now() };
+  catSound();
+}
+function catSyllable(now) {
+  const t = performance.now() - cat.t0 - CAT_UP;
+  return t >= 0 && t < CAT_SPIN ? CAT_SONG[Math.floor(t / BEAT) % CAT_SONG.length] : '';
+}
+function drawCatButton(g, ox, now) {
+  const pressed = cat && performance.now() - cat.t0 < 260;
+  const bx = CAT_BTN[0] + 3 + ox, by = CAT_BTN[1] + 4;
+  g.fillStyle = '#7a2a22'; g.fillRect(bx, by + 1, 6, 6);
+  g.fillStyle = pressed ? '#a8392f' : '#d24a3c'; g.fillRect(bx, by + (pressed ? 1 : 0), 6, 5);
+  if (!pressed) { g.fillStyle = '#ef8a7c'; g.fillRect(bx + 1, by, 2, 1); }
+}
+function drawCat(g, ox, now) {
+  const t = Math.max(0, performance.now() - cat.t0), im = IMG.cat;   // frame timestamps can trail the press
+  if (t > CAT_UP + CAT_SPIN + CAT_DOWN) { cat = null; return; }
+  if (!im) return;
+  // rise out of the floor, spin, sink back down
+  const rise = t < CAT_UP ? t / CAT_UP : t > CAT_UP + CAT_SPIN ? 1 - (t - CAT_UP - CAT_SPIN) / CAT_DOWN : 1;
+  const spinning = t >= CAT_UP && t < CAT_UP + CAT_SPIN && !reduced;
+  const k = spinning ? Math.cos((t - CAT_UP) / 1000 * Math.PI * 2 * 2.2) : 1;
+  const hop = spinning ? Math.round(Math.abs(Math.sin((t - CAT_UP) / BEAT * Math.PI)) * 3) : 0;
+  const h = Math.round(im.height * rise);
+  if (h <= 0) return;
+  g.fillStyle = 'rgba(0,0,0,.16)'; g.fillRect(CAT_X - 7 + ox, CAT_BASE - 1, 14, 2);
+  g.save();
+  g.translate(CAT_X + ox, CAT_BASE - hop);
+  g.scale(Math.abs(k) < 0.08 ? 0.08 * Math.sign(k || 1) : k, 1);
+  g.drawImage(im, 0, 0, im.width, h, -im.width / 2, -h, im.width, h);
+  g.restore();
+}
+function catSound() {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = audio.currentTime + CAT_UP / 1000, beat = BEAT / 1000, n = Math.floor(CAT_SPIN / BEAT);
+    for (let i = 0; i < n; i++) {
+      const syl = CAT_SONG[i % CAT_SONG.length], f = CAT_PITCH[syl], t = t0 + i * beat;
+      const o = audio.createOscillator(), v = audio.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(f * 0.9, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.05);
+      v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(0.07, t + 0.02); v.gain.exponentialRampToValueAtTime(0.001, t + beat * 0.9);
+      o.connect(v).connect(audio.destination); o.start(t); o.stop(t + beat);
+    }
+  } catch (e) { /* no audio: the cat still spins */ }
+}
+function drawDrink(g, ox, now) {
+  const x = COOLERS[drinking.i] + ox, t = now - drinking.t0, top = COOLER_TOP;
+  // bubbles rising through the jug while the cup fills
+  if (t < 1300) for (let k = 0; k < 3; k++) {
+    const by = top + 16 - ((t / 70 + k * 5) % 14);
+    g.fillStyle = 'rgba(255,255,255,.9)'; g.fillRect(x + 4 + k * 3, Math.round(by), 1 + (k === 1), 1 + (k === 1));
+  }
+  if (drinking.cup === 'tap') {
+    const fill = Math.min(1, t / 1000);
+    g.fillStyle = '#8fd0ff'; g.fillRect(x + 4, top + 29, 1, 4);                    // stream from the tap
+    g.fillStyle = '#9aa3a0'; g.fillRect(x + 2, top + 33, 5, 6);                    // paper cup
+    g.fillStyle = '#f6f6f2'; g.fillRect(x + 3, top + 33, 3, 5);
+    const h = Math.round(fill * 4); g.fillStyle = '#6fb7e8'; g.fillRect(x + 3, top + 38 - h, 3, h);
+  }
+}
+function drawCupInHand(g, ox, now) {                                               // drawn over the player
+  const t = now - drinking.t0;
+  {
+    const px = Math.round(player.x + ox) - 2, py = FEET - 42 - (Math.floor(t / 250) % 2);
+    g.fillStyle = '#9aa3a0'; g.fillRect(px + 1, py, 6, 7);
+    g.fillStyle = '#f6f6f2'; g.fillRect(px + 2, py + 1, 4, 5);
+    g.fillStyle = '#6fb7e8'; g.fillRect(px + 2, py + 1, 4, 1);
+  }
+}
+
 function goTo(d) {
   if (busy || openRoom) return;
   player.target = doorCenter(d);
+  player.pendingCooler = null;
   player.pending = SITE.doors.indexOf(d);
   noteMoved();
 }
@@ -736,11 +865,13 @@ addEventListener('keydown', e => {
   if (k === 'Home') { e.preventDefault(); toStart(); return; }
   if (k === 'ArrowLeft' || k === 'a' || k === 'A') { keys.left = true; e.preventDefault(); }
   else if (k === 'ArrowRight' || k === 'd' || k === 'D') { keys.right = true; e.preventDefault(); }
-  else if ((k === 'ArrowDown' || k === 's' || k === 'S') && !busy) { e.preventDefault(); player.target = null; player.pending = null; player.dir = 'down'; }
+  else if ((k === 'ArrowDown' || k === 's' || k === 'S') && !busy) { e.preventDefault(); player.target = null; player.pending = null; player.pendingCooler = null; player.dir = 'down'; }
   else if (k === 'ArrowUp' || k === 'w' || k === 'W' || k === 'Enter' || k === ' ') {
     if (document.activeElement && document.activeElement.closest('#directory')) return;
     const n = nearDoor();
     if (n >= 0 && !busy) { e.preventDefault(); enter(SITE.doors[n]); }
+    else if (!busy && !openRoom && nearCooler() >= 0) { e.preventDefault(); drink(nearCooler()); }
+    else if (!busy && !openRoom && player.x > CAT_BTN[0] - 16) { e.preventDefault(); pressCatButton(); }
   }
 });
 addEventListener('keyup', e => {
@@ -751,21 +882,44 @@ addEventListener('keyup', e => {
 addEventListener('blur', () => { keys.left = keys.right = false; });
 
 function local(e) { const r = hall.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+function catBtnAt(clientX, clientY) {
+  const wx = camX + clientX / s, wy = (clientY - top) / s, b = CAT_BTN;
+  return wx >= b[0] - 2 && wx <= b[0] + b[2] + 2 && wy >= b[1] - 2 && wy <= b[1] + b[3] + 2;
+}
+function eggAt(clientX, clientY) {
+  const wx = camX + clientX / s, wy = (clientY - top) / s;
+  return EGGS.find(({ box: b }) => wx >= b[0] && wx <= b[0] + b[2] && wy >= b[1] && wy <= b[1] + b[3]) || null;
+}
+function coolerAt(clientX, clientY) {
+  const wx = camX + clientX / s, wy = (clientY - top) / s;
+  return COOLERS.findIndex(x => wx >= x - 4 && wx <= x + 18 && wy >= COOLER_TOP - 4 && wy <= WALL_BASE + 4);
+}
 function doorAt(clientX, clientY) {
   const wx = camX + clientX / s, wy = (clientY - top) / s;
   return SITE.doors.find(d => wx >= d.x - 6 && wx <= d.x + DOOR_W + 6 && wy >= 160 && wy <= WALL_BASE + 6);
 }
 cv.addEventListener('click', e => {
-  if (busy || openRoom) return;
+  if (openRoom) return;
   const [lx, ly] = local(e);
+  const egg = eggAt(lx, ly);
+  if (egg) { egg.until = performance.now() + 2200; return; }
+  if (catBtnAt(lx, ly)) { pressCatButton(); return; }
+  if (busy) return;
   const d = doorAt(lx, ly);
   if (d) { goTo(d); return; }
-  player.pending = null;
+  const c = coolerAt(lx, ly);
+  if (c >= 0) { goToCooler(c); return; }
+  player.pending = null; player.pendingCooler = null;
   player.target = Math.max(30, Math.min(W - 30, camX + lx / s));
   noteMoved();
 });
-cv.addEventListener('mousemove', e => { const [lx, ly] = local(e); const d = doorAt(lx, ly); hoverDoor = d ? SITE.doors.indexOf(d) : -1; cv.style.cursor = d ? 'pointer' : 'default'; });
-cv.addEventListener('mouseleave', () => { hoverDoor = -1; });
+cv.addEventListener('mousemove', e => {
+  const [lx, ly] = local(e); const d = doorAt(lx, ly);
+  // easter eggs (coolers, crest book, Wren painting) get only the hand cursor, no highlight
+  hoverDoor = d ? SITE.doors.indexOf(d) : -1; hoverCooler = d ? -1 : coolerAt(lx, ly); hoverEgg = eggAt(lx, ly); hoverBtn = catBtnAt(lx, ly);
+  cv.style.cursor = d || hoverCooler >= 0 || hoverEgg || hoverBtn ? 'pointer' : 'default';
+});
+cv.addEventListener('mouseleave', () => { hoverDoor = -1; hoverCooler = -1; hoverEgg = null; });
 
 /* ---------- start ---------- */
 function arrive() {
