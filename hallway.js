@@ -184,7 +184,7 @@ const CAT_SONG_SRC = 'assets/cat_spin_sound.mp3';
 // quiet gaps between the opening phrases (seconds): the cat stands still in these, otherwise it dances to the loudness
 const CAT_LULLS = [[0, 1.5], [3.0, 4.75], [6.2, 7.9], [9.35, 11.1], [12.55, 14.35], [15.8, 17.55], [19.0, 20.75], [27.65, 30.4]];
 const CAT_FORCE = [[30.4, 33.4]];   // a soft phrase right before the first drop: spin even though it's quiet
-const CAT_RISE = [104.0, 107.15], CAT_RISE_PX = 18;   // the build-up to the last drop: the cat floats up while spinning, then lands on the drop
+const CAT_RISE = [92.0, 107.15];   // the build-up to the last drop: the cat floats up while spinning and stays up until the end
 // click-to-speak easter eggs: hit box (x, y, w, h) in world pixels, text, bubble height
 const EGGS = [
   { box: [549, 139, 15, 13], text: 'QS2 babyyy', y: 92 },           // the open book on the Imperial crest
@@ -708,12 +708,12 @@ async function drink(i) {
   const mine = drinking; await sleep(1400);
   if (drinking === mine) drinking = null;
 }
+// how high the cat floats by the last drop: about two thirds of the way up to the red button
 function catLift(st) {
-  if (reduced || st < 0) return 0;
-  const [a, b] = CAT_RISE;
-  if (st >= a && st < b) return Math.round(CAT_RISE_PX * Math.pow((st - a) / (b - a), 1.5));
-  if (st >= b && st < b + 0.2) return Math.round(CAT_RISE_PX * (1 - (st - b) / 0.2));   // drop back down on the beat
-  return 0;
+  if (reduced || st < CAT_RISE[0]) return 0;
+  const top = CAT_BASE - (CAT_BTN[1] + CAT_BTN[3] / 2) - (IMG.cat ? IMG.cat.height / 2 : 20);
+  const p = Math.min(1, (st - CAT_RISE[0]) / (CAT_RISE[1] - CAT_RISE[0]));
+  return Math.round(top * 0.65 * Math.pow(p, 1.5));
 }
 // the cat party: music plays, the cat spins to it, the room turns into a rave.
 // Everything is driven live from the track's loudness, so it stays in sync with the music.
@@ -738,9 +738,11 @@ function pressCatButton() {
     actx.resume(); song.currentTime = 0; song.play().catch(() => {});
   } catch (e) { /* no audio support: the cat still dances on a timer */ }
 }
+const catGlide = () => (cat && cat.liftAtLeave > 2 ? 1400 : 0);
 function stopParty() {
   if (!cat || cat.leaving) return;
-  cat.leaving = performance.now();
+  cat.leaving = performance.now(); cat.liftAtLeave = cat.lift || 0;
+  cat.angle = 0;   // face front while floating down
   if (song) song.pause();
 }
 function listen() {
@@ -768,8 +770,9 @@ function drawCat(g, ox) {
   const im = IMG.cat, now = performance.now(), dt = Math.min(50, now - cat.last); cat.last = now;
   const t = Math.max(0, now - cat.t0);
   let rise = Math.min(1, t / CAT_UP);
+  const glide = cat.leaving ? catGlide() : 0;   // ms spent floating back down before sinking
   if (cat.leaving) {
-    rise = 1 - (now - cat.leaving) / CAT_DOWN;
+    rise = 1 - Math.max(0, now - cat.leaving - glide) / CAT_DOWN;
     if (rise <= 0) { cat = null; cv.style.filter = hallBg.style.filter = ''; hallBg.style.backgroundImage = 'linear-gradient(to bottom, var(--ceiling) 0 50%, var(--carpet) 50% 100%)'; return; }
   }
   if (!im) return;
@@ -793,7 +796,12 @@ function drawCat(g, ox) {
   if (h <= 0) return;
   g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(CAT_X - 12 + ox, CAT_BASE - 1, 24, 3);
   g.save();
-  g.translate(CAT_X + ox + shift, CAT_BASE - hop - catLift(st));
+  if (!cat.leaving) { if (st >= 0) cat.lift = catLift(st); }
+  else if (glide) {   // float back down with an ease-in-out
+    const p = Math.min(1, (now - cat.leaving) / glide);
+    cat.lift = cat.liftAtLeave * (1 - p * p * (3 - 2 * p));
+  }
+  g.translate(CAT_X + ox + shift, CAT_BASE - hop - Math.round(cat.lift || 0));
   g.scale(k, 1);
   g.drawImage(spr, 0, 0, spr.width, h, -im.width / 2, -h, spr.width, h);   // anchored on the body; the back's tail sticks out
   g.restore();
@@ -801,7 +809,7 @@ function drawCat(g, ox) {
 function drawRave(g, ox) {
   if (reduced) return;
   const now = performance.now();
-  const fade = cat.leaving ? Math.max(0, 1 - (now - cat.leaving) / CAT_DOWN) : Math.min(1, (now - cat.t0) / 600);
+  const fade = cat.leaving ? Math.max(0, 1 - (now - cat.leaving) / (catGlide() + CAT_DOWN)) : Math.min(1, (now - cat.t0) / 600);
   cat.hue = (cat.hue + 0.6 + beat.level * 4) % 360;
   // the whole room drifts through colours (smooth, no strobing)
   cv.style.filter = hallBg.style.filter = fade > 0 ? 'hue-rotate(' + Math.round(cat.hue * fade) + 'deg) saturate(' + (1 + 0.9 * fade).toFixed(2) + ')' : '';
