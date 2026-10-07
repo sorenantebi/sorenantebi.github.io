@@ -179,8 +179,12 @@ const DOOR_W = 36, DOOR_H = 70, DOOR_Y = WALL_BASE - DOOR_H;
 const SPR = 68, SPR_FOOT = 61, SPR_CX = 34;
 const COOLERS = [352, 1430], COOLER_TOP = WALL_BASE + 2 - 54;   // left edge of each 14x54 water cooler
 // red button at the end of the corridor: a cat pops up and spins (OH EE AA EE OO EE)
-const CAT_BTN = [1466, 192, 12, 14], CAT_X = 1462, CAT_BASE = WALL_BASE + 16;
-const CAT_SONG = ['OH', 'EE', 'AA', 'EE', 'OO', 'EE'], CAT_PITCH = { OH: 392, EE: 784, AA: 523, OO: 349 };
+const CAT_BTN = [1466, 192, 12, 14], CAT_X = 1462, CAT_BASE = FEET;   // the cat stands in line with the player
+const CAT_SONG_SRC = 'assets/cat_spin_sound.mp3';
+// quiet gaps between the opening phrases (seconds): the cat stands still in these, otherwise it dances to the loudness
+const CAT_LULLS = [[0, 1.5], [3.0, 4.75], [6.2, 7.9], [9.35, 11.1], [12.55, 14.35], [15.8, 17.55], [19.0, 20.75], [27.65, 30.4]];
+const CAT_FORCE = [[30.4, 33.4]];   // a soft phrase right before the first drop: spin even though it's quiet
+const CAT_RISE = [104.0, 107.15], CAT_RISE_PX = 18;   // the build-up to the last drop: the cat floats up while spinning, then lands on the drop
 // click-to-speak easter eggs: hit box (x, y, w, h) in world pixels, text, bubble height
 const EGGS = [
   { box: [549, 139, 15, 13], text: 'QS2 babyyy', y: 92 },           // the open book on the Imperial crest
@@ -193,7 +197,7 @@ const SRC = {
   walk0: 'assets/char_walk_0.png?v=10', walk1: 'assets/char_walk_1.png?v=10', walk2: 'assets/char_walk_2.png?v=10',
   walk3: 'assets/char_walk_3.png?v=10', walk4: 'assets/char_walk_4.png?v=10', walk5: 'assets/char_walk_5.png?v=10',
   doorFrame: 'assets/door_frame.png', doorPanel: 'assets/door_panel.png',
-  phone: 'assets/phone.png?v=1', cat: 'assets/cat.png?v=1',
+  phone: 'assets/phone.png?v=1', cat: 'assets/cat.png?v=3', catBack: 'assets/cat_back.png?v=1',
   cooler: 'assets/cooler.png', plant: 'assets/plant.png', bench: 'assets/bench.png',
   painting: 'assets/painting.png', crest: 'assets/crest_imperial.png?v=1', wm: 'assets/painting_wm.png?v=1',
 };
@@ -308,6 +312,10 @@ function drawPlayer(g, ox) {
 /* ---------- DOM ---------- */
 const cv = $('#cv'), ctx = cv.getContext('2d'), labels = $('#labels'), help = $('#help'), whiteout = $('#whiteout');
 const directory = $('#directory');
+// the hallway's own background (the band below/above the canvas), on a layer the rave can recolour
+const hallBg = document.createElement('div');
+hallBg.style.cssText = 'position:absolute;inset:0;pointer-events:none;background:linear-gradient(to bottom, var(--ceiling) 0 50%, var(--carpet) 50% 100%)';
+cv.before(hallBg);
 const doorEls = SITE.doors.map(d => {
   const el = document.createElement('div');
   el.className = 'plaque' + (d.live ? ' live' : '');
@@ -321,7 +329,6 @@ const prompt = document.createElement('div'); prompt.className = 'prompt'; promp
 const hoverTag = document.createElement('div'); hoverTag.className = 'prompt hovertag'; hoverTag.hidden = true; labels.appendChild(hoverTag);
 let hoverDoor = -1, phoneRingUntil = 0;
 const say = document.createElement('div'); say.className = 'prompt say'; say.hidden = true; labels.appendChild(say);
-const catSay = document.createElement('div'); catSay.className = 'prompt say'; catSay.hidden = true; labels.appendChild(catSay);
 EGGS.forEach(e => { e.el = document.createElement('div'); e.el.className = 'prompt say'; e.el.hidden = true; e.el.textContent = e.text; e.until = 0; labels.appendChild(e.el); });
 SITE.doors.forEach((d, i) => {
   const li = document.createElement('li'), db = document.createElement('button');
@@ -492,7 +499,7 @@ function layout() {
   doorEls.forEach(el => { el.style.fontSize = (7 * s) + 'px'; el.style.padding = (1.8 * s) + 'px ' + (3.2 * s) + 'px'; });
   directory.style.fontSize = Math.round(7.8 * s) + 'px';
   prompt.style.fontSize = Math.max(10, 5.6 * s) + 'px';
-  say.style.fontSize = catSay.style.fontSize = Math.max(9, 4.8 * s) + 'px';
+  say.style.fontSize = Math.max(9, 4.8 * s) + 'px';
   EGGS.forEach(e => { e.el.style.fontSize = say.style.fontSize; });
 }
 addEventListener('resize', layout);
@@ -506,7 +513,7 @@ const doorCenter = d => d.x + DOOR_W / 2;
 const nearDoor = () => SITE.doors.findIndex(d => Math.abs(doorCenter(d) - player.x) < 22);
 const coolerSpot = i => COOLERS[i] - 12;   // where you stand to use it, facing right
 const nearCooler = () => COOLERS.findIndex((x, i) => Math.abs(coolerSpot(i) - player.x) < 14);
-let drinking = null, hoverCooler = -1, hoverEgg = null, hoverBtn = false, cat = null, audio = null;
+let drinking = null, hoverCooler = -1, hoverEgg = null, hoverBtn = false, cat = null;
 function noteMoved() { moved = true; }
 
 /* ---------- loop ---------- */
@@ -562,14 +569,15 @@ function render(now) {
   }
   if (drinking) drawDrink(ctx, ox, now);
   drawCatButton(ctx, ox, now);
-  if (cat) drawCat(ctx, ox, now);
   if (hoverDoor >= 0 && !busy && !openRoom) {
     const d = SITE.doors[hoverDoor];
     const b = d.phone ? [d.x + DOOR_W / 2 - 32, 206, 64, 76] : [d.x - 4, DOOR_Y - 4, DOOR_W + 8, DOOR_H + 4];
     ctx.fillStyle = 'rgba(125,255,178,.16)'; ctx.fillRect(b[0] + ox, b[1], b[2], b[3]);
     ctx.strokeStyle = '#3ee07a'; ctx.lineWidth = 2; ctx.strokeRect(b[0] + ox + 1, b[1] + 1, b[2] - 2, b[3] - 1);
   }
+  if (cat) { listen(); drawCat(ctx, ox); }
   drawPlayer(ctx, ox);
+  if (cat) drawRave(ctx, ox);
   if (drinking && drinking.cup === 'hand') drawCupInHand(ctx, ox, now);
 
   SITE.doors.forEach((d, i) => {
@@ -597,11 +605,6 @@ function render(now) {
     e.el.hidden = !(performance.now() < e.until && !openRoom);
     if (!e.el.hidden) { e.el.style.left = sx(e.box[0] + e.box[2] / 2) + 'px'; e.el.style.top = sy(e.y) + 'px'; }
   });
-  const syl = cat && catSyllable(now);
-  if (syl) {
-    catSay.hidden = false; catSay.textContent = syl;
-    catSay.style.left = sx(CAT_X) + 'px'; catSay.style.top = sy(CAT_BASE - 34) + 'px';
-  } else catSay.hidden = true;
   if (drinking && drinking.say) {
     say.hidden = false; say.textContent = drinking.say;
     say.style.left = sx(player.x) + 'px'; say.style.top = sy(FEET - 80) + 'px';
@@ -705,54 +708,128 @@ async function drink(i) {
   const mine = drinking; await sleep(1400);
   if (drinking === mine) drinking = null;
 }
-const CAT_UP = 300, CAT_SPIN = 3600, CAT_DOWN = 300, BEAT = 220;
-function pressCatButton() {
-  if (cat) return;
-  cat = { t0: performance.now() };
-  catSound();
+function catLift(st) {
+  if (reduced || st < 0) return 0;
+  const [a, b] = CAT_RISE;
+  if (st >= a && st < b) return Math.round(CAT_RISE_PX * Math.pow((st - a) / (b - a), 1.5));
+  if (st >= b && st < b + 0.2) return Math.round(CAT_RISE_PX * (1 - (st - b) / 0.2));   // drop back down on the beat
+  return 0;
 }
-function catSyllable(now) {
-  const t = performance.now() - cat.t0 - CAT_UP;
-  return t >= 0 && t < CAT_SPIN ? CAT_SONG[Math.floor(t / BEAT) % CAT_SONG.length] : '';
+// the cat party: music plays, the cat spins to it, the room turns into a rave.
+// Everything is driven live from the track's loudness, so it stays in sync with the music.
+const CAT_UP = 350, CAT_DOWN = 350;
+let song = null, actx = null, analyser = null, bins = null;
+const beat = { level: 0, bass: 0 };
+function pressCatButton() {
+  if (cat && !cat.leaving) { stopParty(); return; }   // pressing again ends the party
+  if (cat) return;
+  cat = { t0: performance.now(), angle: 0, last: performance.now(), leaving: 0, hue: 0 };
+  if (player.x > CAT_X - 26) { player.target = CAT_X - 30; player.pending = null; player.pendingCooler = null; }
+  try {
+    if (!song) {
+      song = new Audio(CAT_SONG_SRC); song.preload = 'auto';
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = actx.createMediaElementSource(song);
+      analyser = actx.createAnalyser(); analyser.fftSize = 512; analyser.smoothingTimeConstant = 0.6;
+      bins = new Uint8Array(analyser.frequencyBinCount);
+      src.connect(analyser); analyser.connect(actx.destination);
+      song.addEventListener('ended', () => stopParty());
+    }
+    actx.resume(); song.currentTime = 0; song.play().catch(() => {});
+  } catch (e) { /* no audio support: the cat still dances on a timer */ }
+}
+function stopParty() {
+  if (!cat || cat.leaving) return;
+  cat.leaving = performance.now();
+  if (song) song.pause();
+}
+function listen() {
+  // loudness (all bins) and bass (lowest bins), with a quick attack and a slow release
+  let level = 0, bass = 0;
+  if (analyser && song && !song.paused) {
+    analyser.getByteFrequencyData(bins);
+    let sum = 0; for (let i = 0; i < bins.length; i++) sum += bins[i];
+    level = sum / bins.length / 255;
+    bass = (bins[1] + bins[2] + bins[3] + bins[4] + bins[5]) / 5 / 255;
+  } else if (!analyser) {
+    const t = performance.now() / 1000; level = 0.45 + 0.2 * Math.sin(t * 2); bass = Math.abs(Math.sin(t * Math.PI * 2));
+  }
+  beat.level = Math.max(level, beat.level * 0.92);
+  beat.bass = Math.max(bass, beat.bass * 0.85);
 }
 function drawCatButton(g, ox, now) {
-  const pressed = cat && performance.now() - cat.t0 < 260;
+  const pressed = cat && !cat.leaving;
   const bx = CAT_BTN[0] + 3 + ox, by = CAT_BTN[1] + 4;
   g.fillStyle = '#7a2a22'; g.fillRect(bx, by + 1, 6, 6);
   g.fillStyle = pressed ? '#a8392f' : '#d24a3c'; g.fillRect(bx, by + (pressed ? 1 : 0), 6, 5);
   if (!pressed) { g.fillStyle = '#ef8a7c'; g.fillRect(bx + 1, by, 2, 1); }
 }
-function drawCat(g, ox, now) {
-  const t = Math.max(0, performance.now() - cat.t0), im = IMG.cat;   // frame timestamps can trail the press
-  if (t > CAT_UP + CAT_SPIN + CAT_DOWN) { cat = null; return; }
+function drawCat(g, ox) {
+  const im = IMG.cat, now = performance.now(), dt = Math.min(50, now - cat.last); cat.last = now;
+  const t = Math.max(0, now - cat.t0);
+  let rise = Math.min(1, t / CAT_UP);
+  if (cat.leaving) {
+    rise = 1 - (now - cat.leaving) / CAT_DOWN;
+    if (rise <= 0) { cat = null; cv.style.filter = hallBg.style.filter = ''; hallBg.style.backgroundImage = 'linear-gradient(to bottom, var(--ceiling) 0 50%, var(--carpet) 50% 100%)'; return; }
+  }
   if (!im) return;
-  // rise out of the floor, spin, sink back down
-  const rise = t < CAT_UP ? t / CAT_UP : t > CAT_UP + CAT_SPIN ? 1 - (t - CAT_UP - CAT_SPIN) / CAT_DOWN : 1;
-  const spinning = t >= CAT_UP && t < CAT_UP + CAT_SPIN && !reduced;
-  const k = spinning ? Math.cos((t - CAT_UP) / 1000 * Math.PI * 2 * 2.2) : 1;
-  const hop = spinning ? Math.round(Math.abs(Math.sin((t - CAT_UP) / BEAT * Math.PI)) * 3) : 0;
-  const h = Math.round(im.height * rise);
+  // spin speed follows the loudness: flat out in the drops, easing to face front when it's quiet.
+  // In the opening lulls it stands completely still.
+  const st = song && !song.paused ? song.currentTime : -1;
+  const lull = analyser && (st < 0 || CAT_LULLS.some(([a, b]) => st >= a && st < b));
+  const loud = Math.max(0, (beat.level - 0.18) / 0.32);
+  if (!reduced && !cat.leaving) {
+    const forced = analyser && CAT_FORCE.some(([a, b]) => st >= a && st < b);
+    cat.speed = !lull && loud > 0.05 ? Math.PI * 2 * (0.6 + 3.4 * Math.min(1, loud)) : forced ? Math.PI * 2 * 2 : 0;
+    if (lull) cat.angle = 0;
+    else if (cat.speed) cat.angle += dt / 1000 * cat.speed;
+    else { const r = cat.angle % (Math.PI * 2); cat.angle += (r < Math.PI ? -r : Math.PI * 2 - r) * Math.min(1, dt / 120); }
+  }
+  // fake 3D turn: the front while it faces us, the back while it faces away, squeezed by how side-on it is
+  const c = Math.cos(cat.angle), facing = c >= 0, spr = facing ? im : (IMG.catBack || im);
+  const k = Math.max(0.12, Math.abs(c)), shift = Math.round(Math.sin(cat.angle) * 3);
+  const hop = reduced || lull ? 0 : Math.round(beat.bass * beat.bass * 7);
+  const h = Math.round(spr.height * rise);
   if (h <= 0) return;
-  g.fillStyle = 'rgba(0,0,0,.16)'; g.fillRect(CAT_X - 7 + ox, CAT_BASE - 1, 14, 2);
+  g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(CAT_X - 12 + ox, CAT_BASE - 1, 24, 3);
   g.save();
-  g.translate(CAT_X + ox, CAT_BASE - hop);
-  g.scale(Math.abs(k) < 0.08 ? 0.08 * Math.sign(k || 1) : k, 1);
-  g.drawImage(im, 0, 0, im.width, h, -im.width / 2, -h, im.width, h);
+  g.translate(CAT_X + ox + shift, CAT_BASE - hop - catLift(st));
+  g.scale(k, 1);
+  g.drawImage(spr, 0, 0, spr.width, h, -im.width / 2, -h, spr.width, h);   // anchored on the body; the back's tail sticks out
   g.restore();
 }
-function catSound() {
-  try {
-    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-    const t0 = audio.currentTime + CAT_UP / 1000, beat = BEAT / 1000, n = Math.floor(CAT_SPIN / BEAT);
-    for (let i = 0; i < n; i++) {
-      const syl = CAT_SONG[i % CAT_SONG.length], f = CAT_PITCH[syl], t = t0 + i * beat;
-      const o = audio.createOscillator(), v = audio.createGain();
-      o.type = 'triangle';
-      o.frequency.setValueAtTime(f * 0.9, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.05);
-      v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(0.07, t + 0.02); v.gain.exponentialRampToValueAtTime(0.001, t + beat * 0.9);
-      o.connect(v).connect(audio.destination); o.start(t); o.stop(t + beat);
-    }
-  } catch (e) { /* no audio: the cat still spins */ }
+function drawRave(g, ox) {
+  if (reduced) return;
+  const now = performance.now();
+  const fade = cat.leaving ? Math.max(0, 1 - (now - cat.leaving) / CAT_DOWN) : Math.min(1, (now - cat.t0) / 600);
+  cat.hue = (cat.hue + 0.6 + beat.level * 4) % 360;
+  // the whole room drifts through colours (smooth, no strobing)
+  cv.style.filter = hallBg.style.filter = fade > 0 ? 'hue-rotate(' + Math.round(cat.hue * fade) + 'deg) saturate(' + (1 + 0.9 * fade).toFixed(2) + ')' : '';
+  hallBg.style.backgroundImage = fade > 0
+    ? 'linear-gradient(hsla(' + ((cat.hue * 3) % 360) + ',90%,55%,' + ((0.12 + beat.level * 0.25) * fade).toFixed(3) + '), hsla(' + ((cat.hue * 3) % 360) + ',90%,55%,' + ((0.12 + beat.level * 0.25) * fade).toFixed(3) + ')), linear-gradient(to bottom, var(--ceiling) 0 50%, var(--carpet) 50% 100%)'
+    : 'linear-gradient(to bottom, var(--ceiling) 0 50%, var(--carpet) 50% 100%)';
+  hallBg.style.backgroundBlendMode = 'overlay, normal';
+  g.save();
+  const x0 = Math.max(0, ox), x1 = Math.min(viewW, ox + W);
+  g.beginPath(); g.rect(x0, 0, x1 - x0, H); g.clip();   // keep the lights inside the hallway
+  g.globalCompositeOperation = 'screen';
+  // a coloured light cone under every ceiling light, swaying and pulsing with the bass
+  for (let x = 30, i = 0; x < W; x += 160, i++) {
+    const cx = x + 50 + ox;
+    if (cx < -120 || cx > viewW + 120) continue;
+    const sway = Math.sin(now / 700 + i * 1.3) * 60;
+    const hue = (cat.hue * 2 + i * 67) % 360, a = (0.16 + beat.bass * 0.3) * fade;
+    const grd = g.createLinearGradient(0, 32, 0, H);
+    grd.addColorStop(0, 'hsla(' + hue + ',100%,60%,' + a.toFixed(3) + ')');
+    grd.addColorStop(1, 'hsla(' + hue + ',100%,60%,0)');
+    g.fillStyle = grd;
+    g.beginPath(); g.moveTo(cx - 8, 32); g.lineTo(cx + 8, 32); g.lineTo(cx + sway + 70, H); g.lineTo(cx + sway - 70, H); g.closePath(); g.fill();
+  }
+  // a soft colour wash over the room that breathes with the music
+  g.globalCompositeOperation = 'overlay';
+  g.fillStyle = 'hsla(' + ((cat.hue * 3) % 360) + ',90%,55%,' + ((0.12 + beat.level * 0.25) * fade).toFixed(3) + ')';
+  g.fillRect(x0, 0, x1 - x0, H);
+  g.restore();
 }
 function drawDrink(g, ox, now) {
   const x = COOLERS[drinking.i] + ox, t = now - drinking.t0, top = COOLER_TOP;
@@ -851,7 +928,7 @@ function goTo(d) {
 
 /* ---------- input ---------- */
 let hallActive = false;
-new IntersectionObserver(es => { hallActive = es[0].intersectionRatio >= 0.6; if (!hallActive) keys.left = keys.right = false; }, { threshold: [0, 0.6, 1] }).observe(hall);
+new IntersectionObserver(es => { hallActive = es[0].intersectionRatio >= 0.6; if (!hallActive) { keys.left = keys.right = false; stopParty(); } }, { threshold: [0, 0.6, 1] }).observe(hall);
 addEventListener('keydown', e => {
   if (openRoom) { if (e.key === 'Escape') closeRoom(); return; }
   if (!hallActive) return;
