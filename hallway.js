@@ -108,14 +108,14 @@ const SITE = {
   // Concise homepage (top of the page). Bracketed text is a placeholder.
   cv: {
     role: 'Machine Learning Engineer · computer vision',
-    intro: "I'm a machine learning engineer and research scientist at the Fraunhofer Institute with a focus on computer/machine vision. I build deep learning systems end to end, from the research side of things to PoC to finished product. My research has looked at bias in chest X-ray models and at feature matching for industrial inspection. I also have experience in neuroscience/biology wet-lab research and hands-on medical practice experience. I love to apply my multi-disciplinary background to solve real-world problems.",
+    intro: ["I'm a machine learning engineer and research scientist at the Fraunhofer Institute, specializing in computer vision. I build deep learning systems end to end, taking ideas from early research through proof of concept to production-ready products. What drives me is the chance to keep learning and to apply a broad range of deep learning methods to real-world problems.", "My recent research includes DL-based keypoint detection and feature matching for industrial slate tiles published to IJCNN 2026. Previously, I worked with Dr. Ben Glocker at Imperial College London, investigating bias in chest X-ray models. I also bring an interdisciplinary background, with hands-on clinical experience and research experience in neuroscience and biology."],
     links: [
       { label: 'GitHub', href: 'https://github.com/sorenantebi' },
       { label: 'LinkedIn', href: 'https://www.linkedin.com/in/soren-antebi/' },
       { label: 'CV (PDF)', href: 'assets/resume.pdf' },
       { label: 'Interactive version ↓', href: '#lift' },
     ],
-    interests: ['Computer vision, object detection and image matching with DL', 'ML applications in biomedical imaging', 'Efficient inference on edge devices', 'Agentic AI applications for research and computational biology'],
+    interests: ['Computer vision, object detection and image matching with DL', 'ML applications in biomedical imaging', 'Efficient inference on edge devices', 'Agentic AI for research and enterprise applications'],
     experience: [
       { org: 'Fraunhofer IAIS, Bonn, Germany', when: '06/2024 - present', role: 'Machine Learning Engineer', note: ['Machine vision for wide range of industry applications using deep learning (working with Daimler, VW, MAN, Henkel, scale-ups and start-ups).', 'Classical computer vision and image processing.', 'Object detection/damage detection, segmentation and classification.', 'Keypoint detection and matching using deep learning.', 'Agentic AI for autoresearch.', 'Deployment of deep learning models on edge devices using OpenVINO and ONNX Runtime.'] },
       { org: 'Imperial College London, London, UK', when: '03/2023 - 10/2023', role: 'Research Assistant, Machine Learning', note: ['Supervisor: Dr. Ben Glocker','Fine tuned chest X-ray disease detection models and studied subgroup bias in medical datasets.', 'Multi-head classification CNNs using PyTorch Lightning.', 'Domain Adversarial Neural Networks for bias mitigation from scratch using PyTorch.'] },
@@ -140,8 +140,8 @@ const SITE = {
     ],
   },
   about: [
-    'I am a machine learning engineer with a focus on computer vision and deep learning applications in the industry. I love working at the intersection of ML research and software development, and love building things from an idea/theory into a tangible functional product.',
-    'My research has looked at fairness in chest X-ray disease detection, where I tested domain-adversarial networks for removing bias, and at hybrid deep learning for matching and classifying industrial slate tiles, which was accepted at IJCNN 2026.',
+    'I\'m a machine learning engineer with a focus on computer vision and deep learning applications in the industry. I love working at the intersection of ML research and software development, and love building things from an idea/theory into a tangible functional product.',
+    'I have a multidisciplinary background in medicine, neuroscience, and machine learning.',
     'Outside of work I enjoy pixel art games (due to my pokemon and minecraft addiction as a kid), traveling, reading, league of legends (I hit challenger at last), and anime.',
     'I moved from Berlin to the US when I was 5, returned to Germany at 10, then completed my undergraduate degree in the US and my postgraduate degree in the UK.',
     'Favorite anime: Steins;Gate, Berserk, Neon Genesis Evangelion, Gurren Lagann and Attack on Titan.',
@@ -151,7 +151,7 @@ const SITE = {
   // About me badge (hallway popup). Tile images live in about/img/.
   badge: {
     role: 'Machine learning engineer',
-    bio: 'I am a machine learning engineer at Fraunhofer IAIS with a focus on computer vision and deep learning applications in the industry. I love building things from an idea into a tangible, functional product.',
+    bio: 'I\'m a machine learning engineer at Fraunhofer IAIS with a focus on computer vision and deep learning applications in the industry. I love building things from an idea into a tangible, functional product. I genuinely enjoy learning about new models and technologies.',
     lived: 'Berlin → US (age 5) → Germany (age 10) → US for undergrad (William & Mary) → UK for my postgrad (Imperial College London).',
     tiles: [
       { id: 'anime', label: 'Anime', text: 'Favorite anime: Steins;Gate, Berserk, Neon Genesis Evangelion, Gurren Lagann and Attack on Titan.' },
@@ -414,7 +414,8 @@ renderResume($('#r-list'));
   cv.links.forEach(l => { const li = el('li'); li.appendChild(link(l.label, l.href)); $('#cv-links').appendChild(li); });
   const home = $('#cv-home');
   const block = title => { const s = el('section', 'block'); s.appendChild(el('h2', null, title)); home.appendChild(s); return s; };
-  block('About Me').appendChild(el('p', null, cv.intro));
+  // intro without a heading, so it doesn't repeat the About me tab
+  const intro = el('section', 'block'); [].concat(cv.intro).forEach(t => intro.appendChild(el('p', null, t))); home.appendChild(intro);
   const ints = el('ul', 'dots'); cv.interests.forEach(t => ints.appendChild(el('li', null, t))); block('Interests').appendChild(ints);
   const lines = (title, items, fmt) => { const ul = el('ul', 'cv-lines'); items.forEach(it => { const li = el('li'); fmt(li, it); ul.appendChild(li); }); block(title).appendChild(ul); };
   const posLine = (li, it) => {
