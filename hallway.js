@@ -124,7 +124,7 @@ const SITE = {
     wetlab: [
       { org: 'College of William & Mary, Williamsburg, VA, USA', when: '08/2019 - 05/2021', role: 'Research Assistant', note: ['PI: Dr. Jennifer Bestman', 'Neural tectal cell analysis and imaging (Fiji/ImageJ)', 'Cell segmentation, plasmid design'] },
       { org: 'Rutgers University, New Brunswick, NJ, USA', when: '05/2019 - 06/2019', role: 'Research Intern', note: ['PI: Dr. Monica Driscoll', 'Molecular biology, exopher formation in C. elegans'] },
-      { org: 'Max Planck Institute for Biology of Ageing, Cologne, Germany', when: '06/2017 - 08/2017', role: 'Research Intern', note: ['PI: Dr. Bjorn Schumacher', 'Genome stability in ageing, locomotion in C. elegans'] },
+      { org: 'CECAD, Cologne, Germany', when: '06/2017 - 08/2017', role: 'Research Intern', note: ['PI: Dr. Bjorn Schumacher', 'Genome stability in ageing, locomotion in C. elegans'] },
     ],
     education: [
       { org: 'Imperial College London, London, UK', when: '10/2022 - 10/2023', role: 'MSc Computer Science', note: 'Thesis: Bias Analysis in Chest X-ray Disease Detection Models', href: 'https://github.com/sorenantebi/chex-aIchemy' },
