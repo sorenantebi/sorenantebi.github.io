@@ -1,0 +1,1010 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brain segmentation · Soren Antebi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=VT323&display=swap">
+<style>
+/* Layout: one fixed stage — a pixel-art MDR office that the camera dollies into; the CRT is live DOM laid over the canvas screen. Single deliberate look. */
+:root {
+  color-scheme: light;
+  --wall: #e7e6df;
+  --carpet: #3f6b50;
+  --scr-bg: #03101c;
+  --ph: #bfeeff;
+  --ph-glow: rgba(140, 215, 255, .55);
+  --ph-dim: rgba(191, 238, 255, .32);
+  --ink: #2a3a30;
+  --chip: rgba(31, 52, 40, .88);
+  --chip-fg: #dbe9df;
+  --c1: #ffb454;
+  --c2: #ff6f91;
+  --c3: #7dffb2;
+  --f-screen: "VT323", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --f-pixel: "Silkscreen", ui-monospace, Menlo, monospace;
+}
+html, body { height: 100%; }
+body { background: var(--wall); color: var(--ink); overflow: hidden; }
+
+#stage { position: fixed; inset: 0; overflow: hidden; background: var(--wall); }
+#scene { position: absolute; image-rendering: pixelated; image-rendering: crisp-edges; }
+#power {
+  position: absolute; background: none; border: 0; padding: 0; cursor: pointer;
+  border-radius: 4px;
+}
+#power:focus-visible { outline: 3px dashed var(--carpet); outline-offset: 4px; }
+#hint {
+  position: absolute; transform: translate(-50%, -100%);
+  font: 400 clamp(10px, 1.1vw, 15px)/1 var(--f-pixel); letter-spacing: .08em;
+  background: #fbfaf5; color: var(--ink); padding: .7em .9em;
+  box-shadow: 0 0 0 2px var(--ink), 4px 4px 0 2px rgba(42,58,48,.25);
+  pointer-events: none; white-space: nowrap;
+  animation: bob 1.4s steps(2, end) infinite;
+}
+#hint::after {
+  content: ""; position: absolute; left: 50%; bottom: -10px; width: 10px; height: 10px;
+  background: #fbfaf5; transform: translateX(-50%); clip-path: polygon(0 0, 100% 0, 50% 100%);
+  filter: drop-shadow(0 2px 0 var(--ink));
+}
+@keyframes bob { 50% { transform: translate(-50%, calc(-100% - 4px)); } }
+
+#caption {
+  position: fixed; left: 16px; bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  max-width: calc(100% - 32px);
+  font: 400 10px/1.5 var(--f-pixel); letter-spacing: .06em; text-transform: uppercase;
+  background: var(--chip); color: var(--chip-fg); padding: .5em .8em;
+  transition: opacity .6s;
+}
+body.on #caption { opacity: 0; pointer-events: none; }
+
+/* ---------- CRT ---------- */
+#screen {
+  position: absolute; overflow: hidden; border-radius: 3% / 4%;
+  background: transparent;
+  transition: background .4s;
+}
+#screen.lit { background: var(--scr-bg); }
+#screen .inner {
+  position: absolute; inset: 0; container-type: size;
+  font-family: var(--f-screen); color: var(--ph);
+  text-shadow: 0 0 .7cqh var(--ph-glow);
+}
+#screen.warm .inner { animation: warm .9s ease-out both; }
+#screen.cool .inner { animation: cool .45s ease-in both; }
+@keyframes warm {
+  0% { transform: scale(0, .004); filter: brightness(4); }
+  35% { transform: scale(1, .004); filter: brightness(3); }
+  70% { transform: scale(1, 1); filter: brightness(1.6); }
+  100% { transform: none; filter: none; }
+}
+@keyframes cool {
+  0% { transform: none; }
+  60% { transform: scale(1, .004); filter: brightness(3); }
+  100% { transform: scale(0, .004); filter: brightness(4); }
+}
+#screen .fx { position: absolute; inset: 0; pointer-events: none; }
+#screen .scan { background: repeating-linear-gradient(to bottom, rgba(0,0,0,.28) 0 1px, transparent 1px 3px); }
+#screen .vig { background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 55%, rgba(0,0,0,.55) 100%); }
+#screen .glare { background: linear-gradient(128deg, rgba(255,255,255,.10), rgba(255,255,255,0) 32%), radial-gradient(ellipse 40% 25% at 30% 20%, rgba(255,255,255,.05), transparent); }
+#screen.lit .fx.scan { animation: roll 7s linear infinite; }
+@keyframes roll { to { background-position: 0 30px; } }
+
+.view { position: absolute; inset: 0; }
+#grid { position: absolute; inset: 0; width: 100%; height: 100%; }
+button.t {
+  font: inherit; color: inherit; background: none; border: 0; padding: .1em .45em; cursor: pointer;
+  text-shadow: inherit; letter-spacing: .04em;
+}
+button.t:hover, button.t:focus-visible { background: var(--ph); color: var(--scr-bg); text-shadow: none; outline: none; }
+button.t[disabled] { opacity: .35; cursor: default; background: none; color: inherit; }
+
+/* boot */
+#v-boot { padding: 6cqh 6cqw; font-size: 5cqh; line-height: 1.12; }
+#bootlog { margin: 0; font: inherit; white-space: pre-wrap; }
+.bootbar { margin-top: 2cqh; height: 3.6cqh; width: 60cqw; border: .35cqh solid var(--ph); padding: .5cqh; }
+.bootbar b { display: block; height: 100%; width: 0; background: var(--ph); box-shadow: 0 0 1cqh var(--ph-glow); }
+.err { color: var(--c2); }
+
+/* splash */
+#v-splash { display: grid; place-content: center; justify-items: center; gap: 2.4cqh; text-align: center; font-size: 5.6cqh; cursor: pointer; }
+#v-splash .logo { width: 34cqw; }
+#v-splash p { margin: 0; }
+#v-splash .small { font-size: 4cqh; opacity: .7; }
+.logo { display: block; overflow: visible; }
+
+/* files */
+#v-brief { display: grid; grid-template-rows: auto auto 1fr auto; padding: 4cqh 5cqw 3cqh; gap: 1.6cqh; }
+.bbody { display: grid; grid-template-columns: 1.05fr 1fr; gap: 4cqw; min-height: 0; overflow: auto; }
+.bbody p { margin: 0 0 1.4cqh; font-size: 3.7cqh; line-height: 1.2; }
+.bbody p.k { font-size: 3.1cqh; opacity: .65; letter-spacing: .08em; margin-bottom: .8cqh; }
+.specs { margin: 0; display: grid; gap: 1.1cqh; align-content: start; }
+.specs div { display: grid; grid-template-columns: 13cqw 1fr; gap: 1.6cqw; border-top: .3cqh dotted var(--ph-dim); padding-top: 1cqh; }
+.specs div:first-child { border-top: 0; padding-top: 0; }
+.specs dt { font-size: 3cqh; opacity: .65; letter-spacing: .08em; }
+.specs dd { margin: 0; font-size: 3.5cqh; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.bfoot { display: flex; justify-content: space-between; align-items: center; font-size: 3.6cqh; gap: 2cqw; }
+.bfoot button.t { font-size: 4.4cqh; }
+#v-files { display: grid; grid-template-rows: auto auto 1fr auto; padding: 4cqh 5cqw 3cqh; gap: 1.6cqh; }
+.fhead { display: flex; align-items: center; justify-content: space-between; gap: 3cqw; }
+.fhead h1 { margin: 0; font-weight: 400; font-size: 6.6cqh; letter-spacing: .08em; line-height: 1; }
+.fhead .sub { font-size: 3.8cqh; opacity: .75; letter-spacing: .06em; }
+.fhead .logo { width: 17cqw; flex: none; }
+.rule { height: 1cqh; border-top: .3cqh solid var(--ph); border-bottom: .3cqh solid var(--ph); opacity: .85; }
+.fbody { display: grid; grid-template-columns: 1.35fr 1fr; gap: 4cqw; min-height: 0; }
+#flist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .4cqh; font-size: 5cqh; min-width: 0; }
+#flist button, #flist label {
+  display: flex; align-items: baseline; gap: 1.4cqw; width: 100%; text-align: left;
+  font: inherit; color: inherit; background: none; border: 0; padding: .1cqh 1cqw; cursor: pointer; text-shadow: inherit;
+}
+#flist .n { opacity: .6; font-variant-numeric: tabular-nums; }
+#flist .dots { flex: 1; border-bottom: .3cqh dotted var(--ph-dim); transform: translateY(-.8cqh); min-width: 2cqw; }
+#flist .r { font-size: .72em; opacity: .7; white-space: nowrap; }
+#flist button:hover, #flist button:focus-visible, #flist label:hover, #flist label:focus-within,
+#flist button.sel { background: var(--ph); color: var(--scr-bg); text-shadow: none; outline: none; }
+#flist button:hover .dots, #flist button.sel .dots, #flist button:focus-visible .dots { border-color: rgba(3,16,28,.4); }
+#flist .gap { height: 1.2cqh; }
+#upfile { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.fprev { display: flex; flex-direction: column; align-items: center; gap: 1.4cqh; min-width: 0; }
+#thumb { width: 36cqh; height: 36cqh; image-rendering: pixelated; border: .35cqh solid var(--ph); box-shadow: 0 0 1.5cqh rgba(140,215,255,.25); }
+#fmeta { font-size: 3.8cqh; text-align: center; line-height: 1.2; }
+#fmeta .k { opacity: .65; }
+.ffoot { font-size: 3.5cqh; opacity: .8; display: flex; justify-content: space-between; gap: 2cqw; flex-wrap: wrap; }
+
+/* refine */
+#v-refine { pointer-events: none; }
+#v-refine .lay { position: absolute; inset: 0; display: grid; grid-template-rows: auto auto 1fr auto auto auto; padding: 5cqh 3.6cqw 2.4cqh; gap: 1.2cqh; }
+.mhead { display: flex; align-items: center; gap: 2.4cqw; }
+.mbox {
+  flex: 1; position: relative; height: 9.5cqh; border: .4cqh solid var(--ph);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 2.2cqw; font-size: 6.6cqh; min-width: 0;
+}
+.mbox::before { content: ""; position: absolute; inset: 0; width: var(--p, 0%); background: var(--ph); opacity: .14; transition: width .35s; }
+.mbox span { position: relative; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mhead .logo { width: 15cqw; flex: none; }
+#gridArea { min-height: 0; }
+.bins { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4cqw; padding: 1.6cqh 5cqw 0; }
+.bin { pointer-events: auto; cursor: pointer; }
+.bin .box {
+  position: relative; height: 6.4cqh; border: .4cqh solid var(--ph); background: var(--scr-bg);
+  display: grid; place-items: center; font-size: 4.8cqh;
+}
+.bin .lid { position: absolute; left: -.4cqh; right: -.4cqh; top: -.4cqh; height: .4cqh; }
+.bin .lid i { position: absolute; top: 0; width: 50%; height: .4cqh; background: var(--ph); transition: transform .28s cubic-bezier(.3,1.6,.6,1); }
+.bin .lid i:first-child { left: 0; transform-origin: 0 50%; }
+.bin .lid i:last-child { right: 0; transform-origin: 100% 50%; }
+.bin.open .lid i:first-child { transform: rotate(-125deg); }
+.bin.open .lid i:last-child { transform: rotate(125deg); }
+.bin .bar { margin-top: 1cqh; height: 2.6cqh; border: .3cqh solid var(--ph); padding: .35cqh; }
+.bin .bar b { display: block; height: 100%; width: var(--p, 0%); background: var(--ph); transition: width .15s linear; }
+.bin .lbl { margin-top: .7cqh; display: flex; justify-content: space-between; gap: 1cqw; font-size: 3.4cqh; letter-spacing: .04em; }
+.bin .lbl .sw { display: inline-block; width: 1.8cqh; height: 1.8cqh; background: var(--cc); margin-right: .8cqw; box-shadow: 0 0 .8cqh var(--cc); }
+.bin.empty { opacity: .45; cursor: default; }
+.bin:focus-visible { outline: .3cqh dashed var(--ph); outline-offset: .6cqh; }
+.mfoot { display: flex; align-items: center; justify-content: space-between; gap: 2cqw; font-size: 3.6cqh; font-variant-numeric: tabular-nums; }
+.mfoot > * { pointer-events: auto; }
+.mfoot .grp { display: flex; gap: .8cqw; flex-wrap: wrap; justify-content: flex-end; }
+#status { font-size: 3.6cqh; letter-spacing: .05em; min-height: 1em; }
+button.t.on { background: var(--ph); color: var(--scr-bg); text-shadow: none; }
+
+#done {
+  position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); pointer-events: auto;
+  background: var(--scr-bg); border: .4cqh solid var(--ph); outline: .4cqh solid var(--ph); outline-offset: .8cqh;
+  padding: 3cqh 4cqw; width: 62cqw; text-align: center; font-size: 4.4cqh; line-height: 1.25;
+  box-shadow: 0 0 0 100cqw rgba(3,16,28,.55);
+}
+#done h2 { margin: 0 0 1cqh; font-weight: 400; font-size: 7cqh; letter-spacing: .06em; }
+#done p { margin: 0 0 1cqh; }
+#done .acts { display: flex; justify-content: center; gap: 3cqw; margin-top: 2cqh; }
+#dropmsg { position: absolute; inset: 3cqh 3cqw; border: .5cqh dashed var(--ph); display: grid; place-items: center; font-size: 7cqh; background: rgba(3,16,28,.82); pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  #hint, #screen.lit .fx.scan { animation: none; }
+  #screen.warm .inner, #screen.cool .inner { animation-duration: .01s; }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+#leave {
+  position: fixed; left: 16px; top: calc(14px + env(safe-area-inset-top, 0px)); z-index: 5;
+  font: 400 11px/1 var(--f-pixel); letter-spacing: .08em; text-transform: uppercase; text-decoration: none;
+  background: #fbfaf5; color: var(--ink); padding: .8em 1em;
+  box-shadow: 0 0 0 2px var(--ink), 3px 3px 0 2px rgba(42,58,48,.25);
+  transition: opacity .6s;
+}
+#leave:hover, #leave:focus-visible { background: var(--ink); color: #fbfaf5; outline: none; }
+body.on #leave { opacity: 0; pointer-events: none; }
+#whiteout { position: fixed; inset: 0; background: #f7f7f2; z-index: 10; pointer-events: none; transition: opacity .7s ease-out; }
+
+.screen-exit { position: absolute; top: .9cqh; left: 1.4cqw; z-index: 6; font-size: 3.2cqh; padding: .2cqh .8cqw; opacity: .85; }
+.screen-exit:hover, .screen-exit:focus-visible { opacity: 1; }
+</style>
+</head>
+<body>
+
+<a id="leave" href="../index.html#mdr">&larr; Hallway <span style="opacity:.6">· Esc</span></a>
+<div id="stage">
+  <canvas id="scene" width="640" height="480" aria-hidden="true"></canvas>
+  <div id="screen">
+    <div class="inner">
+      <section class="view" id="v-off"></section>
+
+      <section class="view" id="v-boot" hidden>
+        <pre id="bootlog"></pre>
+        <div class="bootbar" id="bootbar" hidden><b></b></div>
+      </section>
+
+      <section class="view" id="v-splash" hidden>
+        <svg class="logo" viewBox="0 0 120 60" aria-label="Soren"><ellipse cx="60" cy="30" rx="56" ry="27" fill="none" stroke="currentColor" stroke-width="3"/><ellipse cx="60" cy="30" rx="38" ry="27" fill="none" stroke="currentColor" stroke-width="2"/><ellipse cx="60" cy="30" rx="18" ry="27" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="20" width="112" height="20" fill="var(--scr-bg)"/><text x="60" y="36.5" text-anchor="middle" font-family="VT323, monospace" font-size="21" fill="currentColor" letter-spacing="5">SOREN</text></svg>
+        <p>Welcome to Cerebral Data Refinement.</p>
+        <p class="small">Please enjoy each slice equally.</p>
+      </section>
+
+      <section class="view" id="v-brief" hidden>
+        <div class="fhead">
+          <div>
+            <h1>FILE 00 · PROJECT BRIEF</h1>
+            <div class="sub">BRAIN TUMOUR SEGMENTATION · U-NET IN C++</div>
+          </div>
+          <svg class="logo" viewBox="0 0 120 60" aria-hidden="true"><ellipse cx="60" cy="30" rx="56" ry="27" fill="none" stroke="currentColor" stroke-width="3"/><ellipse cx="60" cy="30" rx="38" ry="27" fill="none" stroke="currentColor" stroke-width="2"/><ellipse cx="60" cy="30" rx="18" ry="27" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="20" width="112" height="20" fill="var(--scr-bg)"/><text x="60" y="36.5" text-anchor="middle" font-family="VT323, monospace" font-size="21" fill="currentColor" letter-spacing="5">SOREN</text></svg>
+        </div>
+        <div class="rule"></div>
+        <div class="bbody">
+          <div>
+            <p class="k">ABSTRACT</p>
+            <p>I implemented a U-Net from scratch in C++ with LibTorch, the PyTorch C++ API, and trained it to segment brain tumours in 2D MRI slices from BraTS (Medical Segmentation Decathlon, Task 01).</p>
+            <p>Every pixel is labelled background, edema, non-enhancing tumour or enhancing tumour.</p>
+            <p>The trained weights were exported and the forward pass rewritten in plain JavaScript, so the model you are about to use runs entirely on this terminal.</p>
+          </div>
+          <dl class="specs">
+            <div><dt>DATA</dt><dd>2,028 train / 730 test slices from 338 / 146 patients · 120×120</dd></div>
+            <div><dt>MODEL</dt><dd>4-level U-Net · 16→128 filters · skip connections · 481,796 params</dd></div>
+            <div><dt>TRAINING</dt><dd>Cross-entropy · Adam 1e-3 · batch 4 · 10 epochs · Apple GPU (MPS)</dd></div>
+            <div><dt>TEST DICE</dt><dd>Whole tumour 0.67 · edema 0.49 · non-enh. 0.46 · enhancing 0.71</dd></div>
+          </dl>
+        </div>
+        <div class="bfoot"><span>PREDICTIONS ARE FOR REFINEMENT, NOT DIAGNOSIS</span><button class="t" id="briefGo">[CONTINUE]</button></div>
+      </section>
+
+      <section class="view" id="v-files" hidden>
+        <div class="fhead">
+          <div>
+            <h1>CEREBRAL DATA REFINEMENT</h1>
+            <div class="sub">MDR-C · U-NET 1→4 · 120×120 AXIAL SLICES</div>
+          </div>
+          <svg class="logo" viewBox="0 0 120 60" aria-hidden="true"><ellipse cx="60" cy="30" rx="56" ry="27" fill="none" stroke="currentColor" stroke-width="3"/><ellipse cx="60" cy="30" rx="38" ry="27" fill="none" stroke="currentColor" stroke-width="2"/><ellipse cx="60" cy="30" rx="18" ry="27" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="20" width="112" height="20" fill="var(--scr-bg)"/><text x="60" y="36.5" text-anchor="middle" font-family="VT323, monospace" font-size="21" fill="currentColor" letter-spacing="5">SOREN</text></svg>
+        </div>
+        <div class="rule"></div>
+        <div class="fbody">
+          <ul id="flist"></ul>
+          <div class="fprev">
+            <canvas id="thumb" width="120" height="120"></canvas>
+            <div id="fmeta"></div>
+          </div>
+        </div>
+        <div class="ffoot"><span>↑↓ BROWSE · ENTER OPEN · OR DROP AN MRI SLICE ON THE SCREEN</span><span>NOT FOR DIAGNOSIS</span></div>
+      </section>
+
+      <section class="view" id="v-refine" hidden>
+        <canvas id="grid" style="pointer-events:auto"></canvas>
+        <div class="lay">
+          <div class="mhead">
+            <div class="mbox" id="mbox"><span id="fname">Cold Harbor</span><span id="pct">0% Complete</span></div>
+            <svg class="logo" viewBox="0 0 120 60" aria-hidden="true"><ellipse cx="60" cy="30" rx="56" ry="27" fill="none" stroke="currentColor" stroke-width="3"/><ellipse cx="60" cy="30" rx="38" ry="27" fill="none" stroke="currentColor" stroke-width="2"/><ellipse cx="60" cy="30" rx="18" ry="27" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="20" width="112" height="20" fill="var(--scr-bg)"/><text x="60" y="36.5" text-anchor="middle" font-family="VT323, monospace" font-size="21" fill="currentColor" letter-spacing="5">SOREN</text></svg>
+          </div>
+          <div class="rule"></div>
+          <div id="gridArea"></div>
+          <div class="rule"></div>
+          <div class="bins" id="bins"></div>
+          <div class="mfoot">
+            <span id="coord">0x00 : 0x00</span>
+            <span id="status"></span>
+            <span class="grp">
+              <button class="t" id="tabNum" hidden>[NUMBERS]</button>
+              <button class="t" id="tabMask" hidden>[SCAN+MASK]</button>
+              <button class="t" id="tabScan" hidden>[SCAN]</button>
+              <button class="t" id="all" disabled>[REFINE ALL]</button>
+              <button class="t" id="back">[FILES]</button>
+            </span>
+          </div>
+        </div>
+        <div id="done" hidden>
+          <h2 id="doneT">100%</h2>
+          <p id="doneA"></p>
+          <p id="doneB"></p>
+          <div class="acts"><button class="t" id="doneView">[VIEW SCAN]</button><button class="t" id="doneNext">[NEXT FILE]</button></div>
+        </div>
+      </section>
+      <button class="t screen-exit" id="screenExit" type="button" hidden>[&#10005; EXIT]</button>
+      <div id="dropmsg" hidden>DROP TO INGEST</div>
+    </div>
+    <div class="fx glare"></div>
+    <div class="fx scan"></div>
+    <div class="fx vig"></div>
+  </div>
+  <button id="power" aria-label="Power on the terminal"></button>
+  <div id="hint">CLICK TO POWER ON</div>
+</div>
+<div id="caption">MDR-C terminal · U-Net trained in LibTorch on BraTS slices · runs entirely in your browser</div>
+
+<div id="whiteout"></div>
+<script src="unet.js?v=2"></script>
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const WEIGHT_BYTES = 1927184, B64_BYTES = 2569580;
+
+const SAMPLES = [
+  { name: 'Cold Harbor', src: 'samples/s0.png', ref: 'BraTS 475 · z93' },
+  { name: 'Siena', src: 'samples/s1.png', ref: 'BraTS 117 · z62' },
+  { name: 'Tumwater', src: 'samples/s2.png', ref: 'BraTS 206 · z62' },
+  { name: 'Dranesville', src: 'samples/s3.png', ref: 'BraTS 261 · z77' },
+  { name: 'Allentown', src: 'samples/s4.png', ref: 'BraTS 141 · z93' },
+  { name: 'Labrador', src: 'samples/s5.png', ref: 'BraTS 074 · z62' },
+];
+const CLS = [null,
+  { name: 'EDEMA', color: '#ffb454', rgb: [255, 180, 84] },
+  { name: 'NON-ENH.', color: '#ff6f91', rgb: [255, 111, 145] },
+  { name: 'ENHANCING', color: '#7dffb2', rgb: [125, 255, 178] },
+];
+const PH = '#bfeeff';
+
+/* ================= pixel-art scene ================= */
+const P = {
+  wall: '#e7e6df', seam: '#dddcd4', lampRim: '#cfcec6', lamp: '#fdfdf8', base: '#cbc9bf',
+  carpet: '#3f6b50', carpet2: '#386148', div: '#4f7c63', div2: '#47725a', divCap: '#7aa68a', divEdge: '#3b604c',
+  desk: '#f3f2ed', deskHi: '#ffffff', deskFront: '#d6d4cc', deskShade: '#bebcb3',
+  out: '#4a4232', b: '#d8cdb0', bHi: '#ece4cc', bLo: '#bcb092', bDk: '#9a8e70',
+  key: '#f1ebd8', keyLo: '#a99d80', keyDk: '#8f8570', ball: '#2f3b40', ballHi: '#9fb4bb', ballRim: '#1f2629',
+  glass: '#17201d', glassHi: '#25302c', mug: '#f6f5f0', mugLo: '#d3d1c8', coffee: '#4a3424', plate: '#3a3326', plateHi: '#cfc6aa',
+};
+const bg = document.createElement('canvas'); bg.width = 640; bg.height = 480;
+(function paint() {
+  const g = bg.getContext('2d');
+  const R = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
+  const dither = (x0, y0, w, h, c, step = 4) => {
+    g.fillStyle = c;
+    for (let y = y0; y < y0 + h; y += 2) for (let x = x0 + ((y >> 1) & 1) * (step >> 1); x < x0 + w; x += step) g.fillRect(x, y, 1, 1);
+  };
+  R(0, 0, 640, 300, P.wall);
+  for (let x = 48; x < 640; x += 96) R(x, 0, 1, 294, P.seam);
+  for (let x = 30; x < 640; x += 150) { R(x, 22, 96, 10, P.lampRim); R(x + 1, 23, 94, 8, P.lamp); R(x, 32, 96, 1, P.seam); }
+  R(0, 292, 640, 8, P.base); R(0, 292, 640, 1, '#dad8cf');
+  R(0, 300, 640, 180, P.carpet); dither(0, 300, 640, 180, P.carpet2);
+  // divider
+  R(166, 184, 308, 4, P.divCap); R(166, 188, 308, 1, P.divEdge);
+  R(168, 189, 304, 84, P.div); dither(168, 189, 304, 84, P.div2, 6);
+  R(166, 184, 2, 89, P.divEdge); R(472, 184, 2, 89, P.divEdge);
+  // desk
+  R(150, 272, 340, 28, P.desk); R(150, 272, 340, 1, P.deskHi); R(150, 271, 340, 1, P.deskShade);
+  R(150, 300, 340, 8, P.deskFront); R(150, 308, 340, 1, P.deskShade);
+  R(162, 309, 8, 76, P.deskFront); R(470, 309, 8, 76, P.deskFront);
+  R(162, 309, 8, 2, P.deskShade); R(470, 309, 8, 2, P.deskShade);
+  R(158, 385, 16, 3, '#335a43'); R(466, 385, 16, 3, '#335a43');
+  R(176, 309, 288, 4, '#365d45');
+  // PixelLab sprites: computer (162x153, screen glass at 24..137 x 11..82) and mug
+  const CX = 239, CY = 139;
+  R(CX + 6, CY + 151, 150, 3, P.deskShade);
+  R(204, 291, 26, 2, P.deskShade);
+  const sprite = (src, x, y) => new Promise(res => {
+    const im = new Image();
+    im.onload = () => { g.drawImage(im, x, y); res(); };
+    im.onerror = res;
+    im.src = src;
+  });
+  Promise.all([sprite('../assets/computer.png', CX, CY), sprite('../assets/mug.png', 206, 270)]).then(() => drawScene());
+})();
+
+const scene = $('#scene'), sg = scene.getContext('2d');
+sg.imageSmoothingEnabled = false;
+let led = true;
+function drawScene() {
+  sg.drawImage(bg, 0, 0);
+  const on = state.mode !== 'off';
+  sg.fillStyle = on ? '#6dff9a' : (led ? '#ffb347' : '#8a6a3c');
+  sg.fillRect(337, 235, 3, 2);
+  if (on) { sg.fillStyle = 'rgba(109,255,154,.35)'; sg.fillRect(336, 234, 5, 1); }
+}
+setInterval(() => { led = !led; if (state.mode === 'off') drawScene(); }, 650);
+
+/* ================= camera ================= */
+const stage = $('#stage'), screenEl = $('#screen'), powerBtn = $('#power'), hint = $('#hint');
+const RIG = { x: 226, y: 128, w: 188, h: 172, cx: 320, cy: 218 };
+const SCR = { x: 276, y: 154, w: 88, h: 66 };
+const cam = { s: 1, fx: RIG.cx, fy: RIG.cy, zoomed: false };
+function camTarget(z) {
+  const vw = stage.clientWidth, vh = stage.clientHeight;
+  const s0 = Math.min(vw / 232, vh / 205);
+  if (!z) return { s: s0, fx: RIG.cx, fy: RIG.cy };
+  return { s: Math.max(s0, Math.min(vw * 0.96 / SCR.w, vh * 0.92 / SCR.h)), fx: SCR.x + SCR.w / 2, fy: SCR.y + SCR.h / 2 };
+}
+function applyCam() {
+  const vw = stage.clientWidth, vh = stage.clientHeight, { s, fx, fy } = cam;
+  const L = vw / 2 - fx * s, T = vh / 2 - fy * s;
+  Object.assign(scene.style, { width: 640 * s + 'px', height: 480 * s + 'px', left: L + 'px', top: T + 'px' });
+  Object.assign(screenEl.style, { left: L + SCR.x * s + 'px', top: T + SCR.y * s + 'px', width: SCR.w * s + 'px', height: SCR.h * s + 'px' });
+  Object.assign(powerBtn.style, { left: L + RIG.x * s + 'px', top: T + RIG.y * s + 'px', width: RIG.w * s + 'px', height: RIG.h * s + 'px' });
+  Object.assign(hint.style, { left: L + 320 * s + 'px', top: T + 132 * s + 'px' });
+}
+let camId = 0;
+function moveCam(z, dur = 1200) {
+  const id = ++camId, from = { ...cam }, to = camTarget(z);
+  cam.zoomed = z;
+  if (reduced) { Object.assign(cam, to); applyCam(); return Promise.resolve(); }
+  return new Promise(res => {
+    const t0 = performance.now();
+    const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    (function step(now) {
+      if (id !== camId) return res();
+      const k = Math.min(1, (now - t0) / dur), e = ease(k);
+      cam.s = from.s + (to.s - from.s) * e; cam.fx = from.fx + (to.fx - from.fx) * e; cam.fy = from.fy + (to.fy - from.fy) * e;
+      applyCam();
+      k < 1 ? requestAnimationFrame(step) : res();
+    })(t0);
+  });
+}
+addEventListener('resize', () => { Object.assign(cam, camTarget(cam.zoomed)); applyCam(); });
+
+/* ================= state + views ================= */
+const state = { mode: 'off' };
+const views = ['off', 'boot', 'splash', 'brief', 'files', 'refine'];
+function show(v) {
+  state.mode = v;
+  const ex = document.getElementById('screenExit'); if (ex) ex.hidden = v === 'off';
+  views.forEach(n => { $('#v-' + n).hidden = n !== v; });
+  drawScene();
+}
+
+/* ================= weights ================= */
+let weightsP = null, weightProg = () => {};
+function loadWeights() {
+  if (!weightsP) weightsP = (async () => {
+    const r = await fetch('weights.txt');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    let text = '';
+    if (r.body && r.body.getReader) {
+      const reader = r.body.getReader(), dec = new TextDecoder(); let got = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += dec.decode(value, { stream: true }); got += value.length;
+        weightProg(Math.min(1, got / B64_BYTES));
+      }
+    } else { text = await r.text(); weightProg(1); }
+    const bin = atob(text.trim()), buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    if (buf.length !== WEIGHT_BYTES) throw new Error('unexpected weight size ' + buf.length);
+    return UNet.makeLayers(new Float32Array(buf.buffer));
+  })();
+  weightsP.catch(() => { weightsP = null; });
+  return weightsP;
+}
+
+/* ================= boot ================= */
+const bootlog = $('#bootlog'), bootbar = $('#bootbar');
+async function typeLine(txt, cls) {
+  const line = document.createElement('div'); if (cls) line.className = cls;
+  bootlog.appendChild(line);
+  if (reduced) { line.textContent = txt; return; }
+  for (let i = 1; i <= txt.length; i++) { line.textContent = txt.slice(0, i); await sleep(14); }
+}
+let skipSplash = null;
+async function powerOn() {
+  if (state.mode !== 'off' || switching) return;
+  const my = ++session;
+  const live = async p => { await p; if (my !== session) throw new Error('aborted'); };
+  try {
+  document.body.classList.add('on');
+  hint.hidden = true; powerBtn.hidden = true;
+  show('boot'); bootlog.textContent = ''; bootbar.hidden = true;
+  const wp = loadWeights();
+  const camP = moveCam(true);
+  await live(sleep(reduced ? 0 : 500));
+  screenEl.classList.remove('cool'); screenEl.classList.add('lit', 'warm');
+  await live(camP);
+  await live(typeLine('SOREN INDUSTRIES  ·  TERMINAL 4E'));
+  await live(typeLine('MDR-C  CEREBRAL DATA REFINEMENT  v1.0'));
+  await live(typeLine(' '));
+  await live(typeLine('MOUNTING NEURAL WEIGHTS'));
+  bootbar.hidden = false;
+  const bar = bootbar.firstElementChild;
+  weightProg = p => { bar.style.width = (p * 100).toFixed(1) + '%'; };
+  try { await live(wp); bar.style.width = '100%'; }
+  catch (e) {
+    if (my !== session) return;
+    await typeLine('WEIGHTS FAILED TO LOAD (' + e.message + ').', 'err');
+    await typeLine('RELOAD THE PAGE TO TRY AGAIN.', 'err');
+    return;
+  }
+  await live(sleep(reduced ? 0 : 200));
+  await live(typeLine('U-NET  1→4 CLASSES · 481,796 PARAMETERS · 18 LAYERS  OK'));
+  await live(typeLine('TEMPERS CALIBRATED: EDEMA / NON-ENH. / ENHANCING'));
+  await live(sleep(reduced ? 200 : 700));
+  show('splash');
+  await live(new Promise(res => { skipSplash = res; setTimeout(res, 2600); }));
+  skipSplash = null;
+  openBrief();
+  } catch (e) { /* boot aborted by power-off */ }
+}
+function openBrief() {
+  show('brief');
+  $('#briefGo').focus({ preventScroll: true });
+}
+$('#briefGo').addEventListener('click', () => openFiles());
+$('#v-splash').addEventListener('click', () => skipSplash && skipSplash());
+
+let session = 0, switching = false;
+async function powerOff() {
+  if (state.mode === 'off' || switching) return;
+  switching = true;
+  session++;
+  if (skipSplash) { skipSplash(); skipSplash = null; }
+  screenEl.classList.remove('warm'); screenEl.classList.add('cool');
+  await sleep(reduced ? 0 : 450);
+  screenEl.classList.remove('lit', 'cool');
+  run.token++;
+  show('off');
+  document.body.classList.remove('on');
+  powerBtn.hidden = false; hint.hidden = false;
+  await moveCam(false, 1000);
+  switching = false;
+  powerBtn.focus({ preventScroll: true });
+}
+function leaveRoom() {
+  if (switching) return;
+  switching = true;
+  const w = $('#whiteout');
+  w.style.transitionDuration = (reduced ? 0 : 500) + 'ms';
+  w.style.opacity = 1;
+  setTimeout(() => { location.href = '../index.html#mdr'; }, reduced ? 0 : 500);
+}
+$('#leave').addEventListener('click', e => { e.preventDefault(); leaveRoom(); });
+powerBtn.addEventListener('click', powerOn);
+$('#screenExit').addEventListener('click', powerOff);
+
+/* ================= images ================= */
+function toGray(img) {
+  const c = document.createElement('canvas'); c.width = c.height = 120;
+  const g = c.getContext('2d');
+  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, s = Math.min(w, h);
+  g.fillStyle = '#000'; g.fillRect(0, 0, 120, 120);
+  g.drawImage(img, (w - s) / 2, (h - s) / 2, s, s, 0, 0, 120, 120);
+  const d = g.getImageData(0, 0, 120, 120).data, out = new Float32Array(14400);
+  for (let i = 0; i < 14400; i++) out[i] = (0.299 * d[4 * i] + 0.587 * d[4 * i + 1] + 0.114 * d[4 * i + 2]) / 255;
+  return out;
+}
+function loadImg(src) {
+  return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('bad image')); im.src = src; });
+}
+function phosphorCanvas(gray, mask, withMask) {
+  const c = document.createElement('canvas'); c.width = c.height = 120;
+  const g = c.getContext('2d'), id = g.createImageData(120, 120), d = id.data;
+  for (let i = 0; i < 14400; i++) {
+    const v = gray[i];
+    let r = 191 * v, gg = 238 * v, b = 255 * Math.min(1, v * 1.02);
+    const m = mask ? mask[i] : 0;
+    if (withMask && m) { const k = .78, cc = CLS[m].rgb; r = r * (1 - k) + cc[0] * k; gg = gg * (1 - k) + cc[1] * k; b = b * (1 - k) + cc[2] * k; }
+    d[4 * i] = r; d[4 * i + 1] = gg; d[4 * i + 2] = b; d[4 * i + 3] = 255;
+  }
+  g.putImageData(id, 0, 0);
+  return c;
+}
+
+/* ================= files ================= */
+const flist = $('#flist'), thumb = $('#thumb'), fmeta = $('#fmeta');
+const grays = {};
+let selIdx = 0;
+async function grayFor(i) {
+  if (!grays[i]) grays[i] = loadImg(SAMPLES[i].src).then(toGray);
+  return grays[i];
+}
+function buildList() {
+  flist.textContent = '';
+  const bli = document.createElement('li'), bb = document.createElement('button');
+  bb.id = 'brief-item';
+  bb.innerHTML = '<span class="n">00</span><span class="t">Project brief</span><span class="dots"></span><span class="r">ABSTRACT</span>';
+  bb.addEventListener('click', openBrief);
+  bli.appendChild(bb); flist.appendChild(bli);
+  SAMPLES.forEach((s, i) => {
+    const li = document.createElement('li'), b = document.createElement('button');
+    b.id = 'file-' + i;
+    b.innerHTML = '<span class="n"></span><span class="t"></span><span class="dots"></span><span class="r"></span>';
+    b.querySelector('.n').textContent = String(i + 1).padStart(2, '0');
+    b.querySelector('.t').textContent = s.name;
+    b.querySelector('.r').textContent = s.ref;
+    b.addEventListener('mouseenter', () => preview(i));
+    b.addEventListener('focus', () => preview(i));
+    b.addEventListener('click', () => openSample(i));
+    li.appendChild(b); flist.appendChild(li);
+  });
+  const gap = document.createElement('li'); gap.className = 'gap'; flist.appendChild(gap);
+  const up = document.createElement('li');
+  up.innerHTML = '<label for="upfile"><span class="n">++</span><span class="t">Outside file…</span><span class="dots"></span><span class="r">PNG / JPG</span></label><input type="file" id="upfile" accept="image/*">';
+  flist.appendChild(up);
+  up.querySelector('input').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) ingest(f); });
+  const off = document.createElement('li'), ob = document.createElement('button');
+  ob.id = 'logoff';
+  ob.innerHTML = '<span class="n">--</span><span class="t">Log off</span><span class="dots"></span><span class="r">GOODBYE</span>';
+  ob.addEventListener('click', powerOff);
+  off.appendChild(ob); flist.appendChild(off);
+}
+async function preview(i) {
+  selIdx = i;
+  flist.querySelectorAll('button[id^="file-"]').forEach((b, j) => b.classList.toggle('sel', j === i));
+  const g = await grayFor(i);
+  if (selIdx !== i) return;
+  const tg = thumb.getContext('2d'); tg.imageSmoothingEnabled = false;
+  tg.drawImage(phosphorCanvas(g), 0, 0);
+  fmeta.innerHTML = '<div></div><div class="k"></div>';
+  fmeta.firstChild.textContent = SAMPLES[i].name.toUpperCase();
+  fmeta.lastChild.textContent = SAMPLES[i].ref + ' · 120×120';
+}
+function openFiles() {
+  show('files');
+  if (!flist.children.length) buildList();
+  preview(selIdx);
+  $('#file-' + selIdx).focus({ preventScroll: true });
+}
+async function openSample(i) { selIdx = i; startRefine({ name: SAMPLES[i].name, ref: SAMPLES[i].ref, gray: await grayFor(i) }); }
+async function ingest(file) {
+  if (!file.type.startsWith('image/')) { flashStatus('THAT FILE IS NOT AN IMAGE. TRY A PNG OR JPG SLICE.'); return; }
+  const url = URL.createObjectURL(file);
+  try { const im = await loadImg(url); startRefine({ name: 'Outside File', ref: file.name, gray: toGray(im) }); }
+  catch { flashStatus('COULD NOT READ THAT IMAGE. TRY A PNG OR JPG SLICE.'); }
+  finally { URL.revokeObjectURL(url); }
+}
+function flashStatus(msg) {
+  if (state.mode === 'files') { fmeta.textContent = msg; fmeta.classList.add('err'); setTimeout(() => fmeta.classList.remove('err'), 2400); }
+  else $('#status').textContent = msg;
+}
+flist.addEventListener('keydown', e => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  e.preventDefault();
+  const items = [...flist.querySelectorAll('button, input')];
+  const cur = items.indexOf(document.activeElement);
+  items[(cur + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+});
+
+/* drag & drop */
+let dragDepth = 0;
+screenEl.addEventListener('dragenter', e => { if (!canIngest()) return; e.preventDefault(); dragDepth++; $('#dropmsg').hidden = false; });
+screenEl.addEventListener('dragover', e => { if (canIngest()) e.preventDefault(); });
+screenEl.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#dropmsg').hidden = true; } });
+screenEl.addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; $('#dropmsg').hidden = true;
+  const f = e.dataTransfer.files[0]; if (f && canIngest()) ingest(f);
+});
+function canIngest() { return state.mode === 'files' || (state.mode === 'refine' && G.phase !== 'analyzing'); }
+
+/* ================= refinement ================= */
+const gridCv = $('#grid'), gctx = gridCv.getContext('2d'), gridArea = $('#gridArea'), inner = $('#screen .inner');
+const binsEl = $('#bins'), pctEl = $('#pct'), mbox = $('#mbox'), statusEl = $('#status'), coordEl = $('#coord');
+const G = { phase: 'idle', file: null, gray: null, mask: null, B: [], tot: [0, 0, 0, 0], left: [0, 0, 0, 0], arrived: [0, 0, 0, 0], bin: [0, 0, 0, 0], tumorCells: 0, landed: 0, flying: [], view: 'numbers', scan: 0, ptr: null, geo: null, px: [0, 0, 0, 0], brainPx: 0, scans: {} };
+const run = { token: 0 };
+const DIG = '0123456789'.split('');
+const hash = (a, b) => { let h = (a * 73856093) ^ (b * 19349663); h = Math.imul(h ^ (h >>> 13), 1274126177); return (h ^ (h >>> 16)) >>> 0; };
+
+function buildBins() {
+  binsEl.textContent = '';
+  for (let c = 1; c <= 3; c++) {
+    const b = document.createElement('div');
+    b.className = 'bin'; b.tabIndex = 0; b.dataset.c = c; b.style.setProperty('--cc', CLS[c].color);
+    b.setAttribute('role', 'button');
+    b.innerHTML = '<div class="box"><div class="lid"><i></i><i></i></div><span>0' + c + '</span></div><div class="bar"><b></b></div><div class="lbl"><span><i class="sw"></i>' + CLS[c].name + '</span><span class="v">0%</span></div>';
+    b.addEventListener('click', () => sendToBin(c));
+    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sendToBin(c); } });
+    binsEl.appendChild(b);
+  }
+}
+buildBins();
+const binEl = c => binsEl.children[c - 1];
+
+function setPct() {
+  const p = G.tumorCells ? Math.round(100 * G.landed / G.tumorCells) : (G.phase === 'done' ? 100 : 0);
+  pctEl.textContent = p + '% Complete';
+  mbox.style.setProperty('--p', p + '%');
+}
+function setBin(c) {
+  const el = binEl(c), t = G.tot[c];
+  const p = t ? Math.round(100 * G.arrived[c] / t) : 0;
+  el.querySelector('.bar b').style.setProperty('--p', p + '%');
+  el.querySelector('.v').textContent = G.phase === 'done' ? G.px[c].toLocaleString('en-US') + ' PX' : (t ? p + '%' : 'EMPTY');
+  el.classList.toggle('empty', !t && G.phase !== 'analyzing');
+}
+
+async function startRefine(file) {
+  const my = ++run.token;
+  show('refine');
+  G.file = file; G.gray = file.gray; G.mask = null; G.phase = 'analyzing'; G.view = 'numbers'; G.flying = []; G.landed = 0; G.tumorCells = 0; G.scans = {};
+  G.tot = [0, 0, 0, 0]; G.arrived = [0, 0, 0, 0]; G.bin = [0, 0, 0, 0]; G.px = [0, 0, 0, 0];
+  G.B = [];
+  for (let r = 0; r < 40; r++) for (let c = 0; c < 40; c++) {
+    let s = 0;
+    for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) s += G.gray[(r * 3 + y) * 120 + c * 3 + x];
+    const h = hash(r + 7, c + 911);
+    G.B.push({ v: s / 9, d: h % 10, ph: (h % 628) / 100, cls: 0, gone: false, fly: null });
+  }
+  $('#fname').textContent = file.name;
+  ['tabNum', 'tabMask', 'tabScan'].forEach(id => { $('#' + id).hidden = true; });
+  $('#done').hidden = true; $('#all').disabled = true;
+  for (let c = 1; c <= 3; c++) { binEl(c).classList.remove('open', 'empty'); setBin(c); }
+  setPct(); pctEl.textContent = 'Analyzing';
+  statusEl.textContent = 'ANALYZING · LAYER 00/18';
+  invalidateGeo();
+
+  let L;
+  try { L = await loadWeights(); } catch (e) { statusEl.textContent = 'MODEL WEIGHTS UNAVAILABLE. RELOAD THE PAGE.'; return; }
+  const out = await UNet.forward(L, G.gray, 120, 120, async (i, n) => {
+    if (run.token !== my) throw new Error('cancelled');
+    G.scan = i / n;
+    statusEl.textContent = 'ANALYZING · LAYER ' + String(i).padStart(2, '0') + '/' + n;
+    await sleep(reduced ? 0 : 70);
+  }).catch(() => null);
+  if (!out || run.token !== my) return;
+
+  G.mask = UNet.argmax(out);
+  G.brainPx = 0;
+  for (let i = 0; i < 14400; i++) { G.px[G.mask[i]]++; if (G.gray[i] > 0.02) G.brainPx++; }
+  for (let r = 0; r < 40; r++) for (let c = 0; c < 40; c++) {
+    const cnt = [0, 0, 0, 0];
+    for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) cnt[G.mask[(r * 3 + y) * 120 + c * 3 + x]]++;
+    let best = 0; for (let k = 1; k <= 3; k++) if (cnt[k] > (best ? cnt[best] : 0)) best = k;
+    const cell = G.B[r * 40 + c]; cell.cls = best;
+    if (best) { G.tot[best]++; G.tumorCells++; }
+  }
+  G.left = G.tot.slice();
+  G.phase = 'sorting';
+  for (let c = 1; c <= 3; c++) { if (!G.tot[c]) G.bin[c] = 2; setBin(c); }
+  setPct();
+  if (!G.tumorCells) { finish(); return; }
+  $('#all').disabled = false;
+  statusEl.textContent = reduced ? 'BRIGHT NUMBERS ARE SCARY. CLICK THEM TO REFINE.' : 'FIND THE SCARY NUMBERS. CLICK THEM TO REFINE.';
+}
+
+function invalidateGeo() { G.geo = null; }
+function geo() {
+  if (G.geo) return G.geo;
+  const ir = inner.getBoundingClientRect(), ar = gridArea.getBoundingClientRect();
+  const x = ar.left - ir.left, y = ar.top - ir.top, w = ar.width, h = ar.height;
+  const cell = Math.max(1, Math.min(h / 40, w / 40));
+  const rows = Math.floor(h / cell), cols = Math.floor(w / cell);
+  return G.geo = {
+    iw: ir.width, ih: ir.height, cell, rows, cols,
+    gx: x + (w - cols * cell) / 2, gy: y + (h - rows * cell) / 2,
+    br0: Math.floor((rows - 40) / 2), bc0: Math.floor((cols - 40) / 2),
+  };
+}
+new ResizeObserver(() => {
+  const dpr = Math.min(2, devicePixelRatio || 1), r = inner.getBoundingClientRect();
+  gridCv.width = Math.round(r.width * dpr); gridCv.height = Math.round(r.height * dpr);
+  gctx.setTransform(gridCv.width / r.width, 0, 0, gridCv.height / r.height, 0, 0);
+  invalidateGeo();
+}).observe(inner);
+
+function cellCenter(g, br, bc) {
+  return [g.gx + (g.bc0 + bc + .5) * g.cell, g.gy + (g.br0 + br + .5) * g.cell];
+}
+function binTarget(c) {
+  const ir = inner.getBoundingClientRect(), r = binEl(c).querySelector('.box').getBoundingClientRect();
+  return [r.left - ir.left + r.width / 2, r.top - ir.top + r.height * .55, r.width];
+}
+
+function sendToBin(c) {
+  if (G.phase !== 'sorting' || G.bin[c]) return;
+  G.bin[c] = 1;
+  const g = geo(), now = performance.now(), [tx, ty, tw] = binTarget(c), el = binEl(c);
+  el.classList.add('open');
+  statusEl.textContent = 'REFINING ' + CLS[c].name + ' INTO BIN 0' + c;
+  let k = 0;
+  G.B.forEach((cell, i) => {
+    if (cell.cls !== c || cell.gone) return;
+    const [sx, sy] = cellCenter(g, Math.floor(i / 40), i % 40);
+    const delay = reduced ? 0 : 380 + Math.random() * 520 + (k++ % 40) * 4;
+    cell.fly = { t0: now + delay, dur: reduced ? 1 : 520 + Math.random() * 200, sx, sy, tx: tx + (Math.random() - .5) * tw * .5, ty, c };
+    G.flying.push(cell);
+  });
+}
+async function refineAll() {
+  $('#all').disabled = true;
+  for (let c = 1; c <= 3; c++) {
+    if (G.phase !== 'sorting') return;
+    if (!G.bin[c]) { sendToBin(c); await sleep(reduced ? 0 : 450); }
+  }
+}
+$('#all').addEventListener('click', refineAll);
+
+function landed(cell) {
+  const c = cell.fly.c;
+  cell.fly = null; cell.gone = true;
+  G.arrived[c]++; G.left[c]--; G.landed++;
+  setBin(c); setPct();
+  if (!G.left[c]) {
+    G.bin[c] = 2;
+    setTimeout(() => binEl(c).classList.remove('open'), 260);
+    if (G.bin.slice(1).every(v => v === 2)) setTimeout(finish, reduced ? 0 : 450);
+  }
+}
+
+function finish() {
+  G.phase = 'done';
+  G.B.forEach(c => { c.gone = false; c.fly = null; });
+  G.flying = [];
+  for (let c = 1; c <= 3; c++) { G.arrived[c] = G.tot[c]; setBin(c); }
+  setPct();
+  $('#all').disabled = true;
+  const tumor = G.px[1] + G.px[2] + G.px[3];
+  $('#doneT').textContent = G.file.name.toUpperCase() + ' · 100%';
+  if (tumor) {
+    $('#doneA').textContent = 'All scary numbers have been refined.';
+    $('#doneB').textContent = 'Tumour region ' + tumor.toLocaleString('en-US') + ' px · ' + (100 * tumor / Math.max(1, G.brainPx)).toFixed(1) + '% of brain tissue.';
+  } else {
+    $('#doneA').textContent = 'No scary numbers were found in this file.';
+    $('#doneB').textContent = 'The model found no tumour in this slice.';
+  }
+  statusEl.textContent = 'THE WORK IS MYSTERIOUS AND IMPORTANT.';
+  $('#done').hidden = false;
+  $('#doneView').focus({ preventScroll: true });
+}
+function setView(v) {
+  G.view = v;
+  $('#done').hidden = true;
+  ['tabNum', 'tabMask', 'tabScan'].forEach(id => { $('#' + id).hidden = false; });
+  $('#tabNum').classList.toggle('on', v === 'numbers');
+  $('#tabMask').classList.toggle('on', v === 'mask');
+  $('#tabScan').classList.toggle('on', v === 'scan');
+  statusEl.textContent = v === 'numbers' ? 'SORTED NUMBERS' : v === 'mask' ? 'SCAN WITH SEGMENTATION' : 'RAW SCAN';
+}
+$('#doneView').addEventListener('click', () => setView('mask'));
+$('#doneNext').addEventListener('click', () => { selIdx = (selIdx + 1) % SAMPLES.length; openSample(selIdx); });
+$('#tabNum').addEventListener('click', () => setView('numbers'));
+$('#tabMask').addEventListener('click', () => setView('mask'));
+$('#tabScan').addEventListener('click', () => setView('scan'));
+$('#back').addEventListener('click', () => { run.token++; G.phase = 'idle'; openFiles(); });
+
+/* pointer */
+function ptrCell(e) {
+  const r = inner.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, g = geo();
+  const col = Math.floor((x - g.gx) / g.cell), row = Math.floor((y - g.gy) / g.cell);
+  const br = row - g.br0, bc = col - g.bc0;
+  return { x, y, row, col, cell: br >= 0 && br < 40 && bc >= 0 && bc < 40 ? G.B[br * 40 + bc] : null };
+}
+const hex = n => '0x' + Math.max(0, n).toString(16).toUpperCase().padStart(2, '0');
+gridCv.addEventListener('pointermove', e => {
+  const p = ptrCell(e); G.ptr = p;
+  const inRange = p.row >= 0 && p.col >= 0 && p.row < geo().rows && p.col < geo().cols;
+  coordEl.textContent = inRange ? hex(p.row) + ' : ' + hex(p.col) + (p.cell ? '  ·  ' + String(Math.round(p.cell.v * 255)).padStart(3, '0') : '') : '0x00 : 0x00';
+  gridCv.style.cursor = G.phase === 'sorting' && p.cell && p.cell.cls && !p.cell.gone && !G.bin[p.cell.cls] ? 'pointer' : 'default';
+});
+gridCv.addEventListener('pointerleave', () => { G.ptr = null; });
+gridCv.addEventListener('click', e => {
+  const p = ptrCell(e);
+  if (G.phase === 'sorting' && p.cell && p.cell.cls) sendToBin(p.cell.cls);
+});
+
+/* render loop */
+let lastT = 0;
+function frame(ts) {
+  requestAnimationFrame(frame);
+  if (state.mode !== 'refine' || ts - lastT < 30) return;
+  lastT = ts;
+  draw(ts);
+}
+requestAnimationFrame(frame);
+
+function draw(now) {
+  const t = now / 1000, g = geo(), ctx = gctx, cell = g.cell;
+  ctx.clearRect(0, 0, g.iw, g.ih);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const fs = cell * 1.05;
+  ctx.font = fs + 'px VT323, monospace';
+  const showBrainDigits = !(G.phase === 'done' && G.view !== 'numbers');
+  const big = [], p = G.ptr, sorting = G.phase === 'sorting', analyzing = G.phase === 'analyzing';
+  const scanRow = G.scan * g.rows;
+  let curFill = '';
+  for (let r = 0; r < g.rows; r++) {
+    for (let c = 0; c < g.cols; c++) {
+      const br = r - g.br0, bc = c - g.bc0, inB = br >= 0 && br < 40 && bc >= 0 && bc < 40;
+      let a, d, col = PH, sc = 1, x = g.gx + (c + .5) * cell, y = g.gy + (r + .5) * cell;
+      const h = hash(r, c);
+      if (inB) {
+        if (!showBrainDigits) continue;
+        const ce = G.B[br * 40 + bc];
+        if (ce.gone || ce.fly) continue;
+        a = .08 + .92 * Math.pow(ce.v, .8);
+        d = (ce.d + (reduced ? 0 : Math.floor(t * .6 + ce.ph))) % 10;
+        if (ce.cls && sorting && !G.bin[ce.cls]) {
+          if (reduced) a = 1;
+          else { x += Math.sin(t * 5 + ce.ph) * cell * .16; y += Math.cos(t * 6.3 + ce.ph * 1.7) * cell * .2; sc = 1.1 + .14 * Math.sin(t * 7 + ce.ph); a = Math.max(a, .7); }
+        }
+        if (G.phase === 'done' && ce.cls) { col = CLS[ce.cls].color; a = 1; }
+      } else {
+        a = .05 + .11 * ((h & 7) / 7);
+        d = ((h >> 3) + (reduced ? 0 : Math.floor(t * .5 + (h % 97) / 31))) % 10;
+      }
+      if (analyzing && Math.abs(r - scanRow) < 1.6) { a = Math.min(1, a + .55); d = (d + Math.floor(t * 20)) % 10; }
+      if (p) {
+        const dx = (x - p.x) / cell, dy = (y - p.y) / cell, dd = Math.sqrt(dx * dx + dy * dy);
+        if (dd < 4) { const k = 1 - dd / 4; sc *= 1 + 1.5 * k * k; a = Math.min(1, a + .35 * k); }
+      }
+      if (sc > 1.04) { big.push([sc, x, y, a, d, col]); continue; }
+      if (col !== curFill) { ctx.fillStyle = col; curFill = col; }
+      ctx.globalAlpha = a;
+      ctx.fillText(DIG[d], x, y);
+    }
+  }
+  big.sort((m, n) => m[0] - n[0]);
+  for (const [sc, x, y, a, d, col] of big) {
+    ctx.font = fs * sc + 'px VT323, monospace';
+    ctx.fillStyle = col; ctx.globalAlpha = a;
+    ctx.fillText(DIG[d], x, y);
+  }
+  if (G.flying.length) {
+    ctx.font = fs + 'px VT323, monospace';
+    const still = [];
+    for (const ce of G.flying) {
+      const f = ce.fly; if (!f) continue;
+      const k = (now - f.t0) / f.dur;
+      if (k >= 1) { landed(ce); continue; }
+      still.push(ce);
+      const col = CLS[f.c].color;
+      if (k < 0) {
+        ctx.globalAlpha = .9; ctx.fillStyle = col;
+        ctx.fillRect(f.sx - cell / 2, f.sy - cell / 2, cell, cell);
+        ctx.fillStyle = '#03101c'; ctx.globalAlpha = 1;
+        ctx.fillText(DIG[ce.d], f.sx, f.sy);
+        continue;
+      }
+      const e = k * k, x = f.sx + (f.tx - f.sx) * e, y = f.sy + (f.ty - f.sy) * e - Math.sin(Math.PI * k) * cell * 4;
+      ctx.globalAlpha = 1 - k * .3; ctx.fillStyle = col;
+      ctx.font = fs * (1.3 - .6 * k) + 'px VT323, monospace';
+      ctx.fillText(DIG[ce.d], x, y);
+    }
+    G.flying = still;
+  }
+  if (!showBrainDigits) {
+    const key = G.view;
+    if (!G.scans[key]) G.scans[key] = phosphorCanvas(G.gray, G.mask, key === 'mask');
+    const x = g.gx + g.bc0 * cell, y = g.gy + g.br0 * cell, s = 40 * cell;
+    ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#03101c'; ctx.fillRect(x - cell, y - cell * .5, s + cell * 2, s + cell);
+    ctx.drawImage(G.scans[key], x, y, s, s);
+    ctx.strokeStyle = PH; ctx.lineWidth = Math.max(1, cell * .12); ctx.globalAlpha = .7;
+    ctx.strokeRect(x - cell * .5, y - cell * .25, s + cell, s + cell * .5);
+    if (key === 'mask') {
+      ctx.font = cell * 1.1 + 'px VT323, monospace'; ctx.textAlign = 'left'; ctx.globalAlpha = 1;
+      let ly = y + cell;
+      for (let c = 1; c <= 3; c++) {
+        ctx.fillStyle = CLS[c].color; ctx.fillRect(x + s + cell * 1.6, ly - cell * .35, cell * .7, cell * .7);
+        ctx.fillStyle = PH; ctx.fillText(CLS[c].name, x + s + cell * 2.6, ly);
+        ly += cell * 1.5;
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* keys */
+addEventListener('keydown', e => {
+  if (state.mode === 'off' && (e.key === 'Enter' || e.key === ' ') && document.activeElement === document.body) { e.preventDefault(); powerOn(); }
+  if (state.mode === 'splash' && skipSplash) skipSplash();
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (state.mode === 'off') leaveRoom();
+    else powerOff();
+  }
+});
+
+/* boot the page */
+document.fonts && document.fonts.load('20px VT323');
+Object.assign(cam, camTarget(false)); applyCam(); show('off');
+requestAnimationFrame(() => { $('#whiteout').style.opacity = 0; });
+addEventListener('pageshow', e => { if (e.persisted) { switching = false; $('#whiteout').style.opacity = 0; } });
+})();
+</script>
+</body>
+</html>

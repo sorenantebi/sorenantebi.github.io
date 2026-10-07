@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Projects · Soren Antebi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&family=Silkscreen&display=swap">
+<style>
+/* Layout: a walkable side-scrolling gallery (same engine as the hallway) whose exhibits open full-screen panels; the thresholding panels run the ported C++ live. */
+:root {
+  color-scheme: light;
+  --ceiling: #f1eee6;
+  --floor: #6e5136;
+  --ink: #1f2b24;
+  --plaque: #2b2620;
+  --plaque-fg: #f3ede1;
+  --paper: #fbfaf6;
+  --wall: #ebe6da;
+  --rule: #c9c4b6;
+  --accent: #2f6b4f;
+  --muted: #5e6a62;
+  --red: #e0534a;
+  --green: #3fbf73;
+  --amber: #e6a33a;
+  --f-pixel: "Silkscreen", ui-monospace, Menlo, monospace;
+  --f-body: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; overflow: hidden; color: var(--ink); font-family: var(--f-body);
+  background: linear-gradient(to bottom, var(--ceiling) 0 50%, var(--floor) 50% 100%);
+}
+[hidden] { display: none !important; }
+
+#hall { position: fixed; inset: 0; overflow: hidden; touch-action: manipulation; }
+#cv { position: absolute; left: 0; image-rendering: pixelated; image-rendering: crisp-edges; }
+.plaque {
+  position: absolute; transform: translate(-50%, 0); pointer-events: none;
+  background: var(--plaque); color: var(--plaque-fg); text-align: center; white-space: nowrap;
+  font-family: var(--f-pixel); letter-spacing: .08em; line-height: 1.2;
+  box-shadow: 0 0 0 1px #120f0b, inset 0 0 0 1px rgba(243,237,225,.22);
+}
+.plaque b { display: block; font-weight: 400; }
+.plaque small { display: block; font-size: .64em; opacity: .7; letter-spacing: .1em; }
+.prompt {
+  position: absolute; transform: translate(-50%, -100%); pointer-events: none;
+  font: 400 12px/1 var(--f-pixel); letter-spacing: .08em; white-space: nowrap;
+  background: var(--paper); color: var(--ink); padding: .65em .8em;
+  box-shadow: 0 0 0 2px var(--ink), 3px 3px 0 2px rgba(31,43,36,.2);
+  animation: bob 1.1s steps(2, end) infinite;
+}
+@keyframes bob { 50% { transform: translate(-50%, calc(-100% - 3px)); } }
+.corner {
+  position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); z-index: 5;
+  font: 400 11px/1 var(--f-pixel); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; text-decoration: none;
+  background: var(--paper); color: var(--ink); border: 0; padding: .8em 1em;
+  box-shadow: 0 0 0 2px var(--ink), 3px 3px 0 2px rgba(31,43,36,.2);
+}
+.corner:hover, .corner:focus-visible { background: var(--ink); color: var(--paper); outline: none; }
+.corner span { opacity: .6; }
+#leave { left: 16px; }
+#help {
+  position: fixed; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  font: 400 12px/1.4 var(--f-pixel); letter-spacing: .1em; text-transform: uppercase; text-align: center; white-space: nowrap;
+  color: rgba(255, 255, 255, .62); text-shadow: 0 1px 0 rgba(0, 0, 0, .35); pointer-events: none;
+  max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis;
+}
+#whiteout { position: fixed; inset: 0; background: #f7f5ef; pointer-events: none; opacity: 1; transition: opacity .6s ease-out; z-index: 20; }
+
+/* exhibit panels */
+.panel-room {
+  position: fixed; inset: 0; z-index: 10; overflow-y: auto; background: var(--wall);
+  padding: calc(24px + env(safe-area-inset-top, 0px)) 16px calc(40px + env(safe-area-inset-bottom, 0px));
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 22px; }
+.wrap.narrow { max-width: 760px; }
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.dept { font: 400 11px/1 var(--f-pixel); letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
+.back {
+  font: 400 12px/1 var(--f-pixel); letter-spacing: .08em; text-transform: uppercase; cursor: pointer;
+  background: var(--paper); color: var(--ink); border: 0; padding: .8em 1em;
+  box-shadow: 0 0 0 2px var(--ink), 3px 3px 0 2px rgba(31,43,36,.2);
+}
+.back:hover, .back:focus-visible { background: var(--ink); color: var(--paper); outline: none; }
+h2 { margin: 0; font: 400 clamp(22px, 4vw, 34px)/1.1 var(--f-pixel); letter-spacing: .04em; text-wrap: balance; }
+.lead { margin: 0; font-size: 14.5px; line-height: 1.65; max-width: 72ch; }
+.lead b { font-weight: 500; }
+.card { background: var(--paper); box-shadow: 0 0 0 2px var(--ink); padding: 18px 20px; min-width: 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; }
+.seg { display: inline-flex; box-shadow: 0 0 0 2px var(--ink); }
+.seg button {
+  font: 400 10px/1 var(--f-pixel); letter-spacing: .08em; text-transform: uppercase; cursor: pointer;
+  background: var(--paper); color: var(--ink); border: 0; padding: .9em 1em; border-left: 2px solid var(--ink);
+}
+.seg button:first-child { border-left: 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.seg button:focus-visible { outline: 2px dashed var(--accent); outline-offset: 2px; }
+.lbl { font: 400 10px/1 var(--f-pixel); letter-spacing: .1em; color: var(--muted); text-transform: uppercase; margin-right: 8px; }
+.ctl { display: inline-flex; align-items: center; gap: 6px; }
+input[type=range] { accent-color: var(--accent); width: 180px; }
+.chk { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.chk input { accent-color: var(--accent); width: 16px; height: 16px; }
+.demo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 22px; align-items: start; }
+.viewer canvas { display: block; width: 100%; height: auto; background: #000; image-rendering: auto; }
+.viewer .cap, .histo .cap { margin-top: 10px; font: 400 10px/1.5 var(--f-pixel); letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+.histo canvas { display: block; width: 100%; height: 300px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-top: 14px; }
+.stat { border-top: 2px solid var(--ink); padding-top: 8px; }
+.stat .k { font: 400 9px/1.3 var(--f-pixel); letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+.stat .v { font: 500 20px/1.2 var(--f-body); font-variant-numeric: tabular-nums; }
+.stat .v small { font-size: 12px; color: var(--muted); font-weight: 400; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 12px; }
+.legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 6px; }
+.run { font: 400 10px/1 var(--f-pixel); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; background: var(--accent); color: var(--paper); border: 0; padding: .9em 1em; box-shadow: 0 0 0 2px var(--ink); }
+.run:hover, .run:focus-visible { background: var(--ink); outline: none; }
+.code h3 { margin: 0 0 10px; font: 400 11px/1 var(--f-pixel); letter-spacing: .12em; color: var(--accent); text-transform: uppercase; }
+.code pre { margin: 0; overflow-x: auto; font: 400 12.5px/1.55 var(--f-body); background: #1d2420; color: #dfe9e2; padding: 16px 18px; box-shadow: 0 0 0 2px var(--ink); }
+.code pre .c { color: #8fa596; }
+.code pre .k { color: #f0c674; }
+.code pre .n { color: #8fd3ff; }
+.code .src { margin-top: 10px; font-size: 12px; }
+.code .src a, .info a { color: var(--accent); text-underline-offset: 3px; }
+.info ul { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; font-size: 14.5px; line-height: 1.6; }
+.meta { font: 400 10px/1.5 var(--f-pixel); letter-spacing: .08em; color: var(--muted); text-transform: uppercase; }
+.go {
+  display: inline-block; font: 400 11px/1 var(--f-pixel); letter-spacing: .08em; text-transform: uppercase; text-decoration: none;
+  background: var(--accent); color: var(--paper); padding: .85em 1em; box-shadow: 0 0 0 2px var(--ink);
+}
+.go:hover, .go:focus-visible { background: var(--ink); outline: none; }
+@media (max-width: 900px) { .demo { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .prompt { animation: none; } }
+.unet { display: block; width: 100%; height: auto; }
+.unet .u-io { fill: #d9d4c7; stroke: #1f2b24; stroke-width: 1.5; }
+.unet .u-enc { fill: #cfe3d6; stroke: #1f2b24; stroke-width: 1.5; }
+.unet .u-dec { fill: #f1dcb4; stroke: #1f2b24; stroke-width: 1.5; }
+.unet .u-up { fill: #fbfaf6; stroke: #1f2b24; stroke-width: 1.5; stroke-dasharray: 3 2; }
+.unet text { font-family: "IBM Plex Mono", ui-monospace, monospace; fill: #1f2b24; text-anchor: middle; }
+.unet .u-ch { font-size: 12px; font-weight: 500; }
+.unet .u-lab { font-size: 10.5px; fill: #5e6a62; }
+.unet .u-sz { font-size: 10px; fill: #5e6a62; }
+.unet .u-leg { font-size: 11px; text-anchor: start; fill: #5e6a62; }
+.unet .u-skiplab { font-size: 10px; fill: #8a8577; }
+.unet .u-arrow { stroke: #1f2b24; stroke-width: 1.6; fill: none; }
+.unet .u-down { stroke: #c0453c; stroke-width: 1.8; fill: none; }
+.unet .u-upa { stroke: #2f6b4f; stroke-width: 1.8; fill: none; }
+.unet .u-skip { stroke: #9a9484; stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; }
+.unet .u-ahead { fill: #1f2b24; } .unet .u-ahead-down { fill: #c0453c; } .unet .u-ahead-up { fill: #2f6b4f; } .unet .u-ahead-skip { fill: #9a9484; }
+.ch3 { margin: 0 0 12px; font: 400 11px/1 var(--f-pixel); letter-spacing: .12em; color: var(--accent); text-transform: uppercase; }
+.u-stats { margin-top: 0; }
+.info ul b { font-weight: 500; }
+.arch { display: block; width: 100%; height: auto; }
+.arch rect { stroke: #1f2b24; stroke-width: 1.4; }
+.arch .a-group { fill: none; stroke: #9a9484; stroke-dasharray: 6 4; }
+.arch .a-in { fill: #d9d4c7; }
+.arch .a-x { fill: #dbe7f2; }
+.arch .a-m { fill: #f3e9c4; }
+.arch .a-lg { fill: #d7ebe1; }
+.arch .a-p { fill: #e7f1dc; stroke: #2f6b4f; stroke-width: 2; }
+.arch .a-f { fill: #f6dfe3; stroke: #2f6b4f; stroke-width: 2; }
+.arch .a-out { fill: #fbfaf6; }
+.arch .a-frozen { fill: url(#hatch); }
+.arch .a-hatch { stroke: rgba(31,43,36,.12); stroke-width: 3; }
+.arch text { font-family: "IBM Plex Mono", ui-monospace, monospace; fill: #1f2b24; text-anchor: middle; }
+.arch .a-t { font-size: 12.5px; font-weight: 500; }
+.arch .a-s { font-size: 10.5px; fill: #4c5650; }
+.arch .a-g { font-size: 10px; letter-spacing: .1em; text-anchor: start; fill: #5e6a62; }
+.arch .a-lab { font-size: 10px; fill: #2f6b4f; text-anchor: start; }
+.arch .a-leg { font-size: 11px; fill: #5e6a62; text-anchor: start; }
+.arch .a-line { stroke: #1f2b24; stroke-width: 1.6; fill: none; }
+.arch .a-line-g { stroke: #2f6b4f; stroke-width: 2; fill: none; }
+.arch .a-line-b { stroke: #b0533f; stroke-width: 2; fill: none; }
+.arch .a-ah { fill: #1f2b24; } .arch .a-ah-g { fill: #2f6b4f; } .arch .a-ah-b { fill: #b0533f; }
+.paper-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+.match { margin: 0; }
+.match img { display: block; width: 100%; height: auto; background: #000; box-shadow: 0 0 0 2px var(--ink); }
+.match figcaption { margin-top: 10px; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+@media (max-width: 900px) { .paper-grid { grid-template-columns: 1fr; } }
+.dann { display: block; width: 100%; height: auto; }
+.dann rect, .dann .d-fe { stroke: #1f2b24; stroke-width: 1.4; }
+.dann .d-in { fill: #d9d4c7; }
+.dann .d-fe { fill: #dbe7f2; }
+.dann .d-y { fill: #dde3f6; }
+.dann .d-r { fill: #f6dbe6; }
+.dann .d-s3 { fill: #f6e6c6; }
+.dann .d-py { fill: #fbfaf6; stroke: #4f63b8; }
+.dann .d-pr { fill: #fbfaf6; stroke: #c04a7e; }
+.dann .d-ps { fill: #fbfaf6; stroke: #c98a22; }
+.dann .d-pc { fill: #fbe9e6; stroke: #b0533f; }
+.dann .d-inset { fill: #fbfaf6; stroke: #c9c4b6; stroke-dasharray: 4 3; }
+.dann text { font-family: "IBM Plex Mono", ui-monospace, monospace; fill: #1f2b24; text-anchor: middle; }
+.dann .d-t { font-size: 12.5px; font-weight: 500; }
+.dann .d-s { font-size: 10.5px; fill: #4c5650; }
+.dann .d-p { font-size: 11px; }
+.dann .d-lab-b { font-size: 10.5px; fill: #4f63b8; }
+.dann .d-lab-p { font-size: 10px; fill: #c04a7e; }
+.dann .d-lab-a { font-size: 10.5px; fill: #a06a12; }
+.dann .d-lab-r { font-size: 11px; fill: #b0533f; font-weight: 500; }
+.dann .d-g { font-size: 10.5px; fill: #5e6a62; }
+.dann .d-g2 { font-size: 9.5px; fill: #8a8577; }
+.dann .d-f { stroke: #1f2b24; stroke-width: 1.6; fill: none; }
+.dann .d-by { stroke: #4f63b8; stroke-width: 1.6; fill: none; stroke-dasharray: 5 3; }
+.dann .d-bp { stroke: #c04a7e; stroke-width: 1.6; fill: none; stroke-dasharray: 5 3; }
+.dann .d-ba { stroke: #c98a22; stroke-width: 1.6; fill: none; stroke-dasharray: 5 3; }
+.dann .d-adv { stroke: #b0533f; stroke-width: 2.6; fill: none; }
+.dann .d-dash { stroke-dasharray: 6 4; }
+.dann .d-axis { stroke: #8a8577; stroke-width: 1; }
+.dann .d-curve { stroke: #b0533f; stroke-width: 2; fill: none; }
+.dann .d-ah { fill: #1f2b24; } .dann .d-ah-b { fill: #4f63b8; } .dann .d-ah-p { fill: #c04a7e; } .dann .d-ah-a { fill: #c98a22; } .dann .d-ah-r { fill: #b0533f; }
+.dann .v-neg, .dann .v-conf { transition: opacity .25s; }
+.dann.show-neg .v-conf { opacity: 0; }
+.dann.show-conf .v-neg { opacity: 0; }
+#directory {
+  position: absolute; z-index: 2; background: var(--plaque); color: var(--plaque-fg); font-family: var(--f-pixel);
+  box-shadow: 0 0 0 1px #120f0b, inset 0 0 0 1px rgba(243,237,225,.22);
+  padding: .8em 1.1em; line-height: 1.5; letter-spacing: .08em; white-space: nowrap;
+}
+#directory h1 { margin: 0 0 .4em; font-weight: 400; font-size: 1.3em; line-height: 1.1; }
+#directory .step { margin: 0 0 .3em; font-size: .9em; letter-spacing: .06em; }
+#directory .step b { display: inline-block; width: 1.5em; margin-right: .5em; text-align: center; font-weight: 400; background: #3ee07a; color: #10261a; }
+#directory .step:last-of-type { margin-bottom: .75em; }
+#directory ol { list-style: none; margin: 0; padding: 0; font-size: .9em; }
+#directory ol { display: grid; gap: .35em; }
+#directory li button {
+  display: flex; align-items: center; gap: 1em; width: 100%; padding: .35em .6em;
+  font: inherit; letter-spacing: inherit; color: inherit; cursor: pointer; text-align: left;
+  background: rgba(243, 237, 225, .07); border: 1px solid rgba(243, 237, 225, .45); transition: background .12s, color .12s;
+}
+#directory li button .m { opacity: 1 !important; font-size: 1.15em; transition: transform .12s; }
+#directory li button:hover .m, #directory li button:focus-visible .m { transform: translateX(.25em); }
+#directory li .n { opacity: .55; }
+#directory li .t { flex: 1; }
+#directory li .m { opacity: .6; text-transform: uppercase; }
+#directory li button:hover, #directory li button:focus-visible { background: var(--plaque-fg); color: var(--plaque); border-color: var(--plaque-fg); outline: none; }
+#directory .what { margin: 0 0 .65em; font-size: .9em; line-height: 1.6; opacity: 1; letter-spacing: .04em; }
+#directory .how { margin-top: .75em; padding-top: .55em; border-top: 1px solid rgba(243, 237, 225, .35); font-size: .82em; line-height: 2; opacity: 1; letter-spacing: .05em; }
+#directory .how kbd { font: inherit; padding: 0 .35em; border: 1px solid rgba(243, 237, 225, .5); margin-right: .2em; }
+
+/* make clickable signs read as clickable */
+.plaque { transition: background .12s, color .12s; animation: signpulse 2.6s ease-in-out infinite; }
+.plaque.hover { background: var(--plaque-fg); color: var(--plaque); animation: none; box-shadow: 0 0 0 2px #3ee07a, 0 0 12px rgba(62,224,122,.6); }
+@keyframes signpulse { 0%, 100% { box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 0 0 0 rgba(62,224,122,0); } 50% { box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 0 0 4px rgba(62,224,122,.35); } }
+.prompt.hovertag { background: #3ee07a; color: #10261a; box-shadow: 0 0 0 2px #10261a; animation: none; }
+@media (prefers-reduced-motion: reduce) { .plaque { animation: none; } }
+
+/* directory entries styled as real buttons */
+#directory ol { gap: .38em !important; }
+#directory li button {
+  background: rgba(243, 237, 225, .14) !important; border: 2px solid rgba(243, 237, 225, .7) !important;
+  box-shadow: 0 3px 0 #120f0b, inset 0 1px 0 rgba(255,255,255,.12); padding: .36em .65em !important;
+  transition: transform .08s, box-shadow .08s, background .12s, color .12s;
+}
+#directory li button::before { content: "\25B6"; font-size: .7em; margin-right: .6em; opacity: .85; }
+#directory li button .n { flex: none; }
+#directory li button .t { flex: 1; text-align: left; }
+#directory li button:hover, #directory li button:focus-visible {
+  background: rgb(243, 237, 225) !important; color: #2b2620 !important; border-color: #3ee07a !important;
+  transform: translateY(2px); box-shadow: 0 1px 0 #120f0b, 0 0 12px rgba(62,224,122,.55); outline: none;
+}
+#directory li button:active { transform: translateY(3px); box-shadow: 0 0 0 #120f0b; }
+</style>
+</head>
+<body>
+<main id="hall" aria-label="Projects gallery">
+  <canvas id="cv"></canvas>
+  <div id="labels"></div>
+  <nav id="directory" aria-label="Exhibit directory">
+    <h1>PROJECTS</h1>
+    <p class="what">Some projects that I did.</p>
+    <p class="step"><b>1</b> CLICK A PROJECT BELOW</p>
+    <p class="step"><b>2</b> YOU WALK THERE AND IT OPENS</p>
+    <ol id="dirlist"></ol>
+    <div class="how" id="dirHow"></div>
+  </nav>
+</main>
+<a class="corner" id="leave" href="../index.html#od">&larr; Hallway <span>· Esc</span></a>
+<div id="help">&larr; &rarr; walk · &uarr; view exhibit · or click a frame</div>
+
+<!-- Thresholding demo: Otsu + k-means -->
+<section class="panel-room" id="p-threshold" hidden aria-labelledby="th-h">
+  <div class="wrap">
+    <div class="bar"><span class="dept">Projects · 03</span><button class="back" data-close>&larr; Gallery</button></div>
+    <h2 id="th-h">Otsu &amp; k-means thresholding</h2>
+    <p class="lead">Isolating the light strips in a night-time car image, from scratch in C++ without OpenCV. This page runs a line-for-line JavaScript port of that code. It reproduces the compiled C++ output exactly: Otsu gives <b>72</b> (green) and <b>73</b> (red); k-means gives <b>73</b> for both colour channels.</p>
+    <div class="controls">
+      <div class="ctl"><span class="lbl">Channel</span><div class="seg" id="chSeg">
+        <button data-v="red" aria-pressed="true">Red</button><button data-v="green" aria-pressed="false">Green</button>
+      </div></div>
+      <div class="ctl"><span class="lbl">Method</span><div class="seg" id="mSeg">
+        <button data-v="original" aria-pressed="false">Original</button><button data-v="otsu" aria-pressed="true">Otsu</button><button data-v="kmeans" aria-pressed="false">k-means</button><button data-v="manual" aria-pressed="false">Manual</button>
+      </div></div>
+      <div class="ctl" id="manualCtl" hidden><span class="lbl">Threshold</span><input type="range" id="manualT" min="0" max="255" value="40"><span id="manualV" style="font-variant-numeric:tabular-nums;width:2.5em">40</span></div>
+      <label class="chk"><input type="checkbox" id="bright" checked> Brighten display ×3</label>
+    </div>
+    <div class="demo">
+      <div class="card viewer">
+        <canvas id="carCv" width="547" height="540" aria-label="Thresholded car image"></canvas>
+        <div class="cap" id="carCap">Pixels below the threshold are set to black, as in car.cpp</div>
+      </div>
+      <div class="card histo">
+        <canvas id="histCv" aria-label="Intensity histogram"></canvas>
+        <div class="legend" id="legend"></div>
+        <div class="stats" id="stats"></div>
+        <div style="margin-top:14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap">
+          <button class="run" id="kmRun" type="button">Replay k-means</button>
+          <span id="kmIter" style="font-size:13px; color:var(--muted)"></span>
+        </div>
+      </div>
+    </div>
+    <div class="card code">
+      <h3 id="codeTitle">otsu_threshold() · Task_2/car.cpp</h3>
+      <pre id="codeBox"></pre>
+      <div class="src">Source: <a href="https://github.com/sorenantebi/otsu" target="_blank" rel="noopener">github.com/sorenantebi/otsu</a></div>
+    </div>
+  </div>
+</section>
+
+<!-- Line fit demo -->
+<section class="panel-room" id="p-line" hidden aria-labelledby="ln-h">
+  <div class="wrap">
+    <div class="bar"><span class="dept">Projects · 04</span><button class="back" data-close>&larr; Gallery</button></div>
+    <h2 id="ln-h">Bright-line fit</h2>
+    <p class="lead">Find the brightest pixel in every column, drop columns whose peak intensity is an outlier (z-score above the cutoff), then fit a least-squares line through what remains. At the original cutoff of <b>2.0</b> the port gives slope <b>0.0044</b> and intercept <b>426.25</b>, matching the C++ binary.</p>
+    <div class="controls">
+      <div class="ctl"><span class="lbl">Z-score cutoff</span><input type="range" id="zT" min="0.5" max="4" step="0.1" value="2"><span id="zV" style="font-variant-numeric:tabular-nums;width:2.5em">2.0</span></div>
+      <label class="chk"><input type="checkbox" id="showKept" checked> Kept peaks</label>
+      <label class="chk"><input type="checkbox" id="showRej" checked> Rejected outliers</label>
+      <label class="chk"><input type="checkbox" id="showLine" checked> Fitted line</label>
+    </div>
+    <div class="card viewer">
+      <canvas id="lineCv" width="1024" height="768" aria-label="Diffuse surface image with fitted line"></canvas>
+      <div class="legend"><span><i style="background:var(--red)"></i>Kept peaks</span><span><i style="background:var(--amber)"></i>Rejected outliers</span><span><i style="background:#fff;box-shadow:0 0 0 1px #000"></i>Least-squares line</span></div>
+      <div class="stats" id="lineStats"></div>
+    </div>
+    <div class="card code">
+      <h3>linearRegression() · Task_1/filtered_data.h</h3>
+      <pre id="lineCode"></pre>
+      <div class="src">Source: <a href="https://github.com/sorenantebi/otsu" target="_blank" rel="noopener">github.com/sorenantebi/otsu</a></div>
+    </div>
+  </div>
+</section>
+
+<!-- U-Net -->
+<section class="panel-room" id="p-unet" hidden aria-labelledby="un-h">
+  <div class="wrap">
+    <div class="bar"><span class="dept">Projects · 05</span><button class="back" data-close>&larr; Gallery</button></div>
+    <div class="meta">C++ · LibTorch · BraTS</div>
+    <h2 id="un-h">Brain tumour segmentation with a U-Net in C++</h2>
+    <p class="lead">A U-Net written from scratch with LibTorch, the PyTorch C++ API, trained to label every pixel of a 2D brain MRI slice as background, edema, non-enhancing tumour or enhancing tumour. The data comes from BraTS (Medical Segmentation Decathlon, Task 01).</p>
+    <div class="card"><h3 class="ch3">Architecture</h3><svg class="unet" viewBox="0 0 980 500" role="img" aria-labelledby="unet-t unet-d"><title id="unet-t">U-Net architecture</title><desc id="unet-d">Four-level encoder-decoder: 1×120×120 input; encoder blocks with 16, 32, 64 and 128 channels at 120, 60, 30 and 15 pixels, downsampled by stride-2 convolutions; decoder with 2×2 transposed convolutions and concatenated skip connections; 1×1 convolution to 4 classes.</desc><defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="u-ahead"/></marker>
+<marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="u-ahead-down"/></marker>
+<marker id="ahu" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="u-ahead-up"/></marker>
+<marker id="ahs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="u-ahead-skip"/></marker>
+</defs>
+<path class="u-skip" d="M315.0,298.8 L315.0,284.8 L560.0,284.8 L560.0,298.8" marker-end="url(#ahs)"/>
+<text class="u-skiplab" x="437.5" y="278.8">concat</text>
+<path class="u-skip" d="M205.0,203.5 L205.0,189.5 L700.0,189.5 L700.0,203.5" marker-end="url(#ahs)"/>
+<text class="u-skiplab" x="452.5" y="183.5">concat</text>
+<path class="u-skip" d="M95.0,57.0 L95.0,43.0 L840.0,43.0 L840.0,57.0" marker-end="url(#ahs)"/>
+<text class="u-skiplab" x="467.5" y="37.0">concat</text>
+<rect class="u-io" x="24.9" y="77.0" width="10.2" height="186.0"/>
+<text class="u-ch" x="30.0" y="71.0">1</text>
+<text class="u-lab" x="30.0" y="277.0">input</text>
+<text class="u-sz" x="30.0" y="289.0">120×120</text>
+<rect class="u-enc" x="83.6" y="77.0" width="22.8" height="186.0"/>
+<text class="u-ch" x="95.0" y="71.0">16</text>
+<text class="u-lab" x="95.0" y="277.0">enc1</text>
+<text class="u-sz" x="95.0" y="289.0">120×120</text>
+<rect class="u-enc" x="190.1" y="223.5" width="29.8" height="93.0"/>
+<text class="u-ch" x="205.0" y="217.5">32</text>
+<text class="u-lab" x="205.0" y="330.5">enc2</text>
+<text class="u-sz" x="205.0" y="342.5">60×60</text>
+<rect class="u-enc" x="295.2" y="318.8" width="39.6" height="46.5"/>
+<text class="u-ch" x="315.0" y="312.8">64</text>
+<text class="u-lab" x="315.0" y="379.2">enc3</text>
+<text class="u-sz" x="315.0" y="391.2">30×30</text>
+<rect class="u-enc" x="413.2" y="380.4" width="53.5" height="23.2"/>
+<text class="u-ch" x="440.0" y="374.4">128</text>
+<text class="u-lab" x="440.0" y="417.6">enc4</text>
+<text class="u-sz" x="440.0" y="429.6">15×15</text>
+<rect class="u-up" x="540.2" y="318.8" width="39.6" height="46.5"/>
+<text class="u-ch" x="560.0" y="312.8">64</text>
+<text class="u-lab" x="560.0" y="379.2">bottom ↑</text>
+<rect class="u-dec" x="595.2" y="318.8" width="39.6" height="46.5"/>
+<text class="u-ch" x="615.0" y="312.8">64</text>
+<text class="u-lab" x="615.0" y="379.2">dec1</text>
+<rect class="u-up" x="685.1" y="223.5" width="29.8" height="93.0"/>
+<text class="u-ch" x="700.0" y="217.5">32</text>
+<text class="u-lab" x="700.0" y="330.5">dec1_t ↑</text>
+<rect class="u-dec" x="740.1" y="223.5" width="29.8" height="93.0"/>
+<text class="u-ch" x="755.0" y="217.5">32</text>
+<text class="u-lab" x="755.0" y="330.5">dec2</text>
+<rect class="u-up" x="828.6" y="77.0" width="22.8" height="186.0"/>
+<text class="u-ch" x="840.0" y="71.0">16</text>
+<text class="u-lab" x="840.0" y="277.0">dec2_t ↑</text>
+<rect class="u-dec" x="883.6" y="77.0" width="22.8" height="186.0"/>
+<text class="u-ch" x="895.0" y="71.0">16</text>
+<text class="u-lab" x="895.0" y="277.0">dec3</text>
+<rect class="u-io" x="942.8" y="77.0" width="14.4" height="186.0"/>
+<text class="u-ch" x="950.0" y="71.0">4</text>
+<text class="u-lab" x="950.0" y="277.0">output</text>
+<text class="u-sz" x="950.0" y="289.0">120×120</text>
+<line class="u-arrow" x1="38.1" y1="170" x2="79.6" y2="170" marker-end="url(#ah)"/>
+<path class="u-down" d="M109.4,257.0 L186.1,270.0" marker-end="url(#ahd)"/>
+<path class="u-down" d="M222.9,310.5 L291.2,342.0" marker-end="url(#ahd)"/>
+<path class="u-down" d="M337.8,359.2 L409.2,392.0" marker-end="url(#ahd)"/>
+<path class="u-upa" d="M469.8,392.0 L536.2,359.2" marker-end="url(#ahu)"/>
+<line class="u-arrow" x1="582.8" y1="342" x2="591.2" y2="342" marker-end="url(#ah)"/>
+<path class="u-upa" d="M637.8,342.0 L681.1,310.5" marker-end="url(#ahu)"/>
+<line class="u-arrow" x1="717.9" y1="270" x2="736.1" y2="270" marker-end="url(#ah)"/>
+<path class="u-upa" d="M772.9,270.0 L824.6,257.0" marker-end="url(#ahu)"/>
+<line class="u-arrow" x1="854.4" y1="170" x2="879.6" y2="170" marker-end="url(#ah)"/>
+<line class="u-arrow" x1="909.4" y1="170" x2="938.8" y2="170" marker-end="url(#ah)"/>
+<line class="u-arrow" x1="30" y1="438" x2="64" y2="438" marker-end="url(#ah)"/><text class="u-leg" x="74" y="442">3×3 conv + BatchNorm + ReLU, twice per block</text>
+<line class="u-down" x1="500" y1="438" x2="534" y2="438" marker-end="url(#ahd)"/><text class="u-leg" x="544" y="442">3×3 conv, stride 2 (downsample)</text>
+<line class="u-upa" x1="30" y1="458" x2="64" y2="458" marker-end="url(#ahu)"/><text class="u-leg" x="74" y="462">2×2 transposed conv, stride 2 (upsample)</text>
+<line class="u-skip" x1="500" y1="458" x2="534" y2="458" marker-end="url(#ahs)"/><text class="u-leg" x="544" y="462">skip connection, concatenated on channels</text>
+<text class="u-leg" x="30" y="486">Numbers above blocks are channels. Width ∝ √channels, height ∝ resolution. Dashed blocks are upsampled maps before concatenation.</text>
+</svg></div>
+    <div class="card info"><h3 class="ch3">How it works</h3><ul>
+      <li><b>Encoder:</b> four levels of two 3×3 convolutions with BatchNorm and ReLU. Instead of max-pooling, the first convolution of each level has stride 2, halving the resolution (120 → 60 → 30 → 15) while channels double (16 → 128).</li>
+      <li><b>Decoder:</b> 2×2 transposed convolutions upsample back to 120×120. At each level the upsampled map is concatenated with the encoder map of the same size, so fine detail lost in downsampling comes back. A final 1×1 convolution produces 4 class scores per pixel, and the argmax gives the mask.</li>
+      <li><b>Data:</b> a custom LibTorch dataset loads the PNG slices with stb_image, scales them to [0, 1] and pads both image and label to a multiple of 8 so the three stride-2 steps divide evenly.</li>
+      <li><b>Training:</b> cross-entropy loss, Adam at 1e-3, batch size 4, 10 epochs on the Apple GPU (MPS), falling back to CUDA or CPU. The checkpoint with the lowest validation loss is kept.</li>
+    </ul></div>
+    <div class="card code"><h3>Encoder level · encoder.cpp</h3><pre><span class="c">// encoder.cpp — each level halves the resolution with a stride-2 conv, doubles the channels</span>
+n = n*2; <span class="c">// 32</span>
+enc2 = torch::nn::Sequential(
+    torch::nn::Conv2d(torch::nn::Conv2dOptions((<span class="k">int64_t</span>)(n/2), n, 3).stride(2).padding(1)), <span class="c">// 60x60</span>
+    torch::nn::BatchNorm2d(n),
+    torch::nn::ReLU(),
+    torch::nn::Conv2d(torch::nn::Conv2dOptions(n, n, 3).padding(1)),
+    torch::nn::BatchNorm2d(n),
+    torch::nn::ReLU()
+);</pre></div>
+    <div class="card code"><h3>Decoder forward pass · decoder.cpp</h3><pre><span class="c">// decoder.cpp — upsample, concatenate the matching encoder map, convolve</span>
+<span class="k">torch::Tensor</span> Decoder::forward(std::vector&lt;<span class="k">torch::Tensor</span>&gt; connections){
+    <span class="k">auto</span> b1 = b-&gt;forward(connections[3]);
+    <span class="k">auto</span> y1 = dec1-&gt;forward(torch::cat({b1, connections[2]}, 1));
+    <span class="k">auto</span> t1 = dec1_t-&gt;forward(y1);
+    <span class="k">auto</span> y2 = dec2-&gt;forward(torch::cat({t1, connections[1]}, 1));
+    <span class="k">auto</span> t2 = dec2_t-&gt;forward(y2);
+    <span class="k">auto</span> y3 = dec3-&gt;forward(torch::cat({t2, connections[0]}, 1));
+    <span class="k">return</span> y3;   <span class="c">// [batch, 4, H, W] logits</span>
+}</pre></div>
+    <div class="card code"><h3>Training step · main.cpp</h3><pre><span class="c">// main.cpp — training step</span>
+<span class="k">torch::Tensor</span> output = model-&gt;forward(images);
+<span class="k">torch::Tensor</span> loss = criterion(output, labels);   <span class="c">// CrossEntropyLoss over 4 classes</span>
+optimizer.zero_grad();
+loss.backward();
+optimizer.step();
+<span class="c">// ...after validation: keep the checkpoint with the lowest val loss</span>
+if (val_loss &lt; best_val_loss) { torch::save(model, best_model_path); }</pre>
+      <div class="src">Source: <a href="https://github.com/sorenantebi/unet-cpp" target="_blank" rel="noopener">github.com/sorenantebi/unet-cpp</a></div></div>
+  </div>
+</section>
+
+<!-- Paper -->
+<section class="panel-room" id="p-paper" hidden aria-labelledby="pp-h">
+  <div class="wrap">
+    <div class="bar"><span class="dept">Projects · 01</span><button class="back" data-close>&larr; Gallery</button></div>
+    <div class="meta">Paper · Deep learning feature matching · IEEE IJCNN 2026 (accepted)</div>
+    <h2 id="pp-h">Hybrid Deep Learning for Traceability and Classification of Industrial Slate Tiles</h2>
+    <p class="lead">One lightweight model that does two jobs on natural slate: it re-identifies the same tile across camera views, and it classifies which of six Spanish quarries the tile came from. XFeat's fine-grained local features handle matching and add surface texture to classification. MobileNetV3 supplies global semantics.</p>
+    <div class="card"><h3 class="ch3">Architecture</h3><svg class="arch" viewBox="0 0 1000 560" role="img" aria-labelledby="ar-t ar-d"><title id="ar-t">Hybrid XFeat + MobileNetV3 architecture</title><desc id="ar-d">Two slate images enter a frozen XFeat backbone with keypoint and descriptor heads. Keypoints and descriptors from both views feed a 6-layer, 1-head LightGlue matcher that outputs correspondences for instance re-identification. For classification, the XFeat descriptor map and a frozen MobileNetV3-small 576-dimensional embedding are average pooled, projected to d dimensions, concatenated and passed through a two-layer fusion block to 6 quarry classes.</desc><defs>
+<marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="a-ah"/></marker>
+<marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="a-ah-g"/></marker>
+<marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="a-ah-b"/></marker>
+<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" class="a-hatch"/></pattern></defs>
+<rect class="a-group" x="190" y="30" width="270" height="290" rx="10"/><text class="a-g" x="205" y="52">XFEAT · frozen</text>
+<rect class="a-group a-group-m" x="190" y="360" width="270" height="140" rx="10"/><text class="a-g" x="205" y="382">MOBILENETV3-SMALL · frozen</text>
+<rect class="a-in" x="20" y="70" width="140" height="60" rx="6"/>
+<text class="a-t" x="90.0" y="98.5">Side view</text>
+<text class="a-s" x="90.0" y="113.5">second image</text>
+<rect class="a-in" x="20" y="220" width="140" height="60" rx="6"/>
+<text class="a-t" x="90.0" y="248.5">Top view</text>
+<text class="a-s" x="90.0" y="263.5">720×720 crop</text>
+<rect class="a-x" x="210" y="70" width="230" height="56" rx="6"/>
+<rect class="a-frozen" x="210" y="70" width="230" height="56" rx="6"/>
+<text class="a-t" x="325.0" y="96.5">Backbone (shared weights)</text>
+<text class="a-s" x="325.0" y="111.5">multi-scale 1/8 · 1/16 · 1/32</text>
+<rect class="a-x" x="210" y="150" width="230" height="50" rx="6"/>
+<rect class="a-frozen" x="210" y="150" width="230" height="50" rx="6"/>
+<text class="a-t" x="325.0" y="173.5">Keypoint head K</text>
+<text class="a-s" x="325.0" y="188.5">H/8 × W/8 × 65</text>
+<rect class="a-x" x="210" y="222" width="230" height="50" rx="6"/>
+<rect class="a-frozen" x="210" y="222" width="230" height="50" rx="6"/>
+<text class="a-t" x="325.0" y="245.5">Descriptor head F</text>
+<text class="a-s" x="325.0" y="260.5">H/8 × W/8 × 64 dense map</text>
+<text class="a-s" x="325" y="300">+ reliability map R</text>
+<rect class="a-m" x="210" y="395" width="230" height="64" rx="6"/>
+<rect class="a-frozen" x="210" y="395" width="230" height="64" rx="6"/>
+<text class="a-t" x="325.0" y="419.0">Inverted residual blocks</text>
+<text class="a-s" x="325.0" y="434.0">SE attention · HardSwish</text>
+<text class="a-s" x="325.0" y="447.0">ImageNet weights → 576-d S</text>
+<rect class="a-lg" x="520" y="110" width="200" height="82" rx="6"/>
+<text class="a-t" x="620.0" y="136.5">LightGlue matcher</text>
+<text class="a-s" x="620.0" y="151.5">6 layers · 1 head</text>
+<text class="a-s" x="620.0" y="164.5">self- + cross-attention</text>
+<text class="a-s" x="620.0" y="177.5">early stop · point pruning</text>
+<rect class="a-out" x="780" y="121" width="190" height="60" rx="6"/>
+<text class="a-t" x="875.0" y="149.5">Correspondences</text>
+<text class="a-s" x="875.0" y="164.5">instance re-identification</text>
+<rect class="a-p" x="520" y="240" width="200" height="62" rx="6"/>
+<text class="a-t" x="620.0" y="263.0">Projection XFeat</text>
+<text class="a-s" x="620.0" y="278.0">avg pool · Linear 64→d</text>
+<text class="a-s" x="620.0" y="291.0">LayerNorm · HardSwish</text>
+<rect class="a-p" x="520" y="396" width="200" height="62" rx="6"/>
+<text class="a-t" x="620.0" y="419.0">Projection MobileNet</text>
+<text class="a-s" x="620.0" y="434.0">avg pool · Linear 576→d</text>
+<text class="a-s" x="620.0" y="447.0">LayerNorm · HardSwish</text>
+<rect class="a-f" x="760" y="300" width="210" height="96" rx="6"/>
+<text class="a-t" x="865.0" y="333.5">Fusion block</text>
+<text class="a-s" x="865.0" y="348.5">concat 2d</text>
+<text class="a-s" x="865.0" y="361.5">Linear 2d→d · HardSwish</text>
+<text class="a-s" x="865.0" y="374.5">Dropout 0.2 · Linear d→6</text>
+<rect class="a-out" x="780" y="436" width="170" height="50" rx="6"/>
+<text class="a-t" x="865.0" y="459.5">6 quarry classes</text>
+<text class="a-s" x="865.0" y="474.5">softmax logits</text>
+<path class="a-line" d="M160,100 L206,100" marker-end="url(#aa)"/>
+<path class="a-line" d="M160,250 L184,250 L184,110 L206,110" marker-end="url(#aa)"/>
+<path class="a-line" d="M325,126 L325,146" marker-end="url(#aa)"/>
+<path class="a-line-g" d="M440,175 L470,175 L470,140 L516,140" marker-end="url(#ag)"/>
+<path class="a-line-g" d="M440,247 L480,247 L480,165 L516,165" marker-end="url(#ag)"/>
+<path class="a-line-b" d="M440,252 L516,265" marker-end="url(#ab)"/>
+<path class="a-line-g" d="M720,151 L776,151" marker-end="url(#ag)"/>
+<path class="a-line" d="M160,262 L176,262 L176,427 L206,427" marker-end="url(#aa)"/>
+<path class="a-line-b" d="M440,427 L516,427" marker-end="url(#ab)"/>
+<path class="a-line-b" d="M720,271 L740,271 L740,330 L756,330" marker-end="url(#ab)"/>
+<path class="a-line-b" d="M720,427 L740,427 L740,366 L756,366" marker-end="url(#ab)"/>
+<path class="a-line-b" d="M865,396 L865,432" marker-end="url(#ab)"/>
+<text class="a-lab" x="482" y="100">K + F from both views</text>
+<rect class="a-x" x="20" y="511" width="26" height="16" rx="3"/><rect class="a-frozen" x="20" y="511" width="26" height="16" rx="3"/><text class="a-leg" x="54" y="524">frozen pretrained backbone</text>
+<rect class="a-p" x="250" y="511" width="26" height="16" rx="3"/><text class="a-leg" x="284" y="524">trained head</text>
+<line class="a-line-g" x1="400" y1="519" x2="436" y2="519" marker-end="url(#ag)"/><text class="a-leg" x="444" y="524">matching branch</text>
+<line class="a-line-b" x1="590" y1="519" x2="626" y2="519" marker-end="url(#ab)"/><text class="a-leg" x="634" y="524">classification branch</text>
+<text class="a-leg" x="20" y="546">d ∈ {384, 448, 512}; best: d = 512 with HardSwish (3.3M parameters, 858K trainable).</text>
+<path class="a-line" d="M212,118 L199,118 L199,247 L206,247" marker-end="url(#aa)"/>
+</svg></div>
+    <div class="paper-grid">
+      <figure class="card match">
+        <h3 class="ch3">Keypoint matching</h3>
+        <img src="img/matching.jpg" alt="XFeat + LightGlue keypoint matches between a side view and a top-down view of the same slate tile" width="927" height="596" loading="lazy">
+        <figcaption>XFeat + LightGlue matches between the side and top-down views of one tile (class SIN 710). Fig. 1 of the paper.</figcaption>
+      </figure>
+      <div class="card info"><h3 class="ch3">How it works</h3><ul>
+        <li><b>XFeat</b> (frozen) outputs a keypoint heatmap K and a 64-d dense descriptor map F at 1/8 resolution, fusing features from 1/8, 1/16 and 1/32 scales.</li>
+        <li><b>Matching:</b> keypoints and descriptors from both views go into a slimmed-down <b>LightGlue</b> (6 layers, 1 attention head instead of 9 and 4), which alternates self- and cross-attention and stops early once it is confident.</li>
+        <li><b>Classification:</b> F and MobileNetV3-small's 576-d embedding are average pooled, each projected to d dimensions (Linear, LayerNorm, HardSwish), concatenated, and passed through a two-layer fusion block with dropout to 6 classes. Only the heads are trained.</li>
+        <li><b>Data:</b> tiles segmented with SAM2 from two-point prompts, cropped onto black, then randomly cropped to 720×720 so the model learns surface texture rather than cut edges.</li>
+      </ul></div>
+    </div>
+    <div class="card info"><h3 class="ch3">Against a human expert</h3><ul>
+      <li>Compared with a slate specialist with 30+ years of experience, classifying from images alone.</li>
+      <li>On the two quarries that are hardest to tell apart, the model scored <b>87.5%</b> recall versus <b>53.8%</b> (SIN 320) and <b>38.4%</b> (SIN 360) for the expert. It matched the expert on the distinctive classes.</li>
+      <li>Training: AdamW at 1e-3, batch size 16, 100 epochs, 5-fold cross-validation. Evaluated on a desktop CPU and a Raspberry Pi 5 for edge deployment.</li>
+    </ul></div>
+    <div><a class="go" href="https://arxiv.org/abs/2607.04811" target="_blank" rel="noopener">Read on arXiv &#8599;</a></div>
+  </div>
+</section>
+
+<!-- Thesis -->
+<section class="panel-room" id="p-thesis" hidden aria-labelledby="ts-h">
+  <div class="wrap">
+    <div class="bar"><span class="dept">Projects · 02</span><button class="back" data-close>&larr; Gallery</button></div>
+    <div class="meta">MSc thesis · Adversarial deep learning for bias mitigation</div>
+    <h2 id="ts-h">Bias Analysis in Chest X-ray Disease Detection Models</h2>
+    <p class="lead">Pre-trained "foundation" models are attractive in medical imaging, where datasets are small and imbalanced. But deep classifiers can detect protected attributes such as sex and race from X-rays, and might use them as shortcuts. This thesis probes TorchXRayVision models for that kind of bias, then tests Domain Adversarial Neural Networks (DANNs) as a fix when labels are corrupted for one subgroup.</p>
+    <div class="card">
+      <div class="bar" style="margin-bottom:12px"><h3 class="ch3" style="margin:0">DANN architecture</h3>
+        <div class="seg" id="dannSeg"><button data-v="neg" aria-pressed="true">Gradient negation</button><button data-v="conf" aria-pressed="false">Confusion loss</button></div></div>
+      <svg class="dann show-neg" id="dannSvg" viewBox="0 0 1000 560" role="img" aria-labelledby="dn-t dn-d"><title id="dn-t">DANN architecture used in the thesis</title><desc id="dn-d">A chest X-ray passes through a shared DenseNet-121 feature extractor into three linear heads: a label predictor for 14 disease labels, a domain classifier for race (the adversary), and a tertiary sex head that is only monitored. Disease loss updates its head and the backbone. Race and sex losses update only their own heads. The adversarial signal updates the backbone either by gradient negation, minus omega times the race loss gradient, or by a confusion loss that pushes race predictions towards uniform, weighted by omega. Omega fades in from 0 to alpha with a logistic schedule.</desc><defs>
+<marker id="dk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="d-ah"/></marker>
+<marker id="db" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="d-ah-b"/></marker>
+<marker id="dp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="d-ah-p"/></marker>
+<marker id="da" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="d-ah-a"/></marker>
+<marker id="dr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="d-ah-r"/></marker>
+</defs>
+<rect class="d-in" x="20" y="205" width="120" height="70" rx="7"/>
+<text class="d-t" x="80.0" y="232.0">Chest X-ray</text>
+<text class="d-s" x="80.0" y="247.0">224 × 224</text>
+<text class="d-s" x="80.0" y="260.0">CheXpert</text>
+<path class="d-fe" d="M180,170 L400,200 L400,280 L180,310 Z"/>
+<text class="d-t " x="290" y="226" style="text-anchor:middle">Feature extractor G<tspan baseline-shift="sub" font-size="8">f</tspan></text>
+<text class="d-s " x="290" y="243" style="text-anchor:middle">DenseNet-121</text>
+<text class="d-s " x="290" y="256" style="text-anchor:middle">ImageNet or XRV PadChest</text>
+<text class="d-s " x="290" y="269" style="text-anchor:middle">shared by all heads</text>
+<rect class="d-y" x="500" y="58" width="210" height="64" rx="7"/>
+<text class="d-t" x="605.0" y="82.0">Label predictor G<tspan baseline-shift="sub" font-size="8">y</tspan></text>
+<text class="d-s" x="605.0" y="97.0">disease · 14 labels</text>
+<text class="d-s" x="605.0" y="110.0">linear head</text>
+<rect class="d-r" x="500" y="208" width="210" height="64" rx="7"/>
+<text class="d-t" x="605.0" y="232.0">Domain classifier G<tspan baseline-shift="sub" font-size="8">r</tspan></text>
+<text class="d-s" x="605.0" y="247.0">race · 3 classes</text>
+<text class="d-s" x="605.0" y="260.0">the adversary</text>
+<rect class="d-s3" x="500" y="410" width="210" height="64" rx="7"/>
+<text class="d-t" x="605.0" y="434.0">Tertiary head G<tspan baseline-shift="sub" font-size="8">s</tspan></text>
+<text class="d-s" x="605.0" y="449.0">sex · 2 classes</text>
+<text class="d-s" x="605.0" y="462.0">monitored only</text>
+<g class=""><rect class="d-py" x="780" y="77" width="90" height="26" rx="13"/><text class="d-p" x="825.0" y="94">loss L<tspan baseline-shift="sub" font-size="8">y</tspan></text></g>
+<g class=""><rect class="d-pr" x="780" y="227" width="90" height="26" rx="13"/><text class="d-p" x="825.0" y="244">loss L<tspan baseline-shift="sub" font-size="8">r</tspan></text></g>
+<g class=""><rect class="d-ps" x="780" y="429" width="90" height="26" rx="13"/><text class="d-p" x="825.0" y="446">loss L<tspan baseline-shift="sub" font-size="8">s</tspan></text></g>
+<g class="v-conf"><rect class="d-pc" x="750" y="290" width="230" height="26" rx="13"/><text class="d-p" x="865.0" y="307">L<tspan baseline-shift="sub" font-size="8">conf</tspan> = −mean(log softmax(ŷ<tspan baseline-shift="sub" font-size="8">r</tspan>))</text></g>
+<path class="d-f " d="M140,240 L176,240" marker-end="url(#dk)"/>
+<path class="d-f " d="M400,215 L450,215 L450,90 L496,90" marker-end="url(#dk)"/>
+<path class="d-f " d="M400,240 L496,240" marker-end="url(#dk)"/>
+<path class="d-f " d="M400,265 L450,265 L450,442 L496,442" marker-end="url(#dk)"/>
+<path class="d-f " d="M710,90 L776,90" marker-end="url(#dk)"/>
+<path class="d-f " d="M710,240 L776,240" marker-end="url(#dk)"/>
+<path class="d-f " d="M710,442 L776,442" marker-end="url(#dk)"/>
+<path class="d-f v-conf " d="M710,258 L730,258 L730,303 L746,303" marker-end="url(#dk)"/>
+<path class="d-by " d="M825,77 C825,30 600,30 605,54" marker-end="url(#db)"/>
+<path class="d-by " d="M600,40 C420,18 300,60 292,180" marker-end="url(#db)"/>
+<text class="d-lab-b " x="700" y="28" style="text-anchor:middle">∂L<tspan baseline-shift="sub" font-size="8">y</tspan> updates head + backbone</text>
+<path class="d-bp " d="M820,227 C815,196 730,192 700,204" marker-end="url(#dp)"/>
+<text class="d-lab-p " x="770" y="190" style="text-anchor:middle">∂L<tspan baseline-shift="sub" font-size="8">r</tspan> updates its head only</text>
+<path class="d-ba " d="M825,455 C825,505 620,505 605,478" marker-end="url(#da)"/>
+<text class="d-lab-a " x="720" y="522" style="text-anchor:middle">∂L<tspan baseline-shift="sub" font-size="8">s</tspan> updates its head only</text>
+<path class="d-adv v-neg " d="M790,253 C770,350 430,370 330,302" marker-end="url(#dr)"/>
+<text class="d-lab-r v-neg" x="575" y="380" style="text-anchor:middle">−ω · ∂L<tspan baseline-shift="sub" font-size="8">r</tspan>/∂θ<tspan baseline-shift="sub" font-size="8">f</tspan>   gradient negation</text>
+<path class="d-adv d-dash v-conf " d="M770,316 C720,385 440,385 322,306" marker-end="url(#dr)"/>
+<text class="d-lab-r v-conf" x="575" y="380" style="text-anchor:middle">ω · ∂L<tspan baseline-shift="sub" font-size="8">conf</tspan>/∂θ<tspan baseline-shift="sub" font-size="8">f</tspan>   confusion loss</text>
+<rect class="d-inset" x="20" y="381" width="330" height="140" rx="6"/>
+<text class="d-g " x="34" y="398" style="text-anchor:start">Adversary fade-in: ω = α / (1 + e<tspan baseline-shift="super" font-size="8">−(step − 20k) / 800</tspan>)</text>
+<line class="d-axis" x1="34" y1="491" x2="334" y2="491"/><polyline class="d-curve" points="34.0,491.0 36.5,491.0 39.0,491.0 41.5,491.0 44.0,491.0 46.5,491.0 49.0,491.0 51.5,491.0 54.0,491.0 56.5,491.0 59.0,491.0 61.5,491.0 64.0,491.0 66.5,491.0 69.0,491.0 71.5,491.0 74.0,491.0 76.5,491.0 79.0,491.0 81.5,491.0 84.0,491.0 86.5,491.0 89.0,491.0 91.5,491.0 94.0,491.0 96.5,491.0 99.0,491.0 101.5,491.0 104.0,491.0 106.5,491.0 109.0,491.0 111.5,491.0 114.0,491.0 116.5,491.0 119.0,491.0 121.5,491.0 124.0,491.0 126.5,491.0 129.0,491.0 131.5,491.0 134.0,491.0 136.5,491.0 139.0,491.0 141.5,490.9 144.0,490.9 146.5,490.9 149.0,490.8 151.5,490.7 154.0,490.6 156.5,490.4 159.0,490.1 161.5,489.6 164.0,488.9 166.5,487.8 169.0,486.3 171.5,484.1 174.0,481.2 176.5,477.2 179.0,472.2 181.5,466.4 184.0,460.0 186.5,453.6 189.0,447.8 191.5,442.8 194.0,438.8 196.5,435.9 199.0,433.7 201.5,432.2 204.0,431.1 206.5,430.4 209.0,429.9 211.5,429.6 214.0,429.4 216.5,429.3 219.0,429.2 221.5,429.1 224.0,429.1 226.5,429.1 229.0,429.0 231.5,429.0 234.0,429.0 236.5,429.0 239.0,429.0 241.5,429.0 244.0,429.0 246.5,429.0 249.0,429.0 251.5,429.0 254.0,429.0 256.5,429.0 259.0,429.0 261.5,429.0 264.0,429.0 266.5,429.0 269.0,429.0 271.5,429.0 274.0,429.0 276.5,429.0 279.0,429.0 281.5,429.0 284.0,429.0 286.5,429.0 289.0,429.0 291.5,429.0 294.0,429.0 296.5,429.0 299.0,429.0 301.5,429.0 304.0,429.0 306.5,429.0 309.0,429.0 311.5,429.0 314.0,429.0 316.5,429.0 319.0,429.0 321.5,429.0 324.0,429.0 326.5,429.0 329.0,429.0 331.5,429.0 334.0,429.0"/>
+<line class="d-axis d-dash" x1="184.0" y1="415" x2="184.0" y2="491"/>
+<text class="d-g2 " x="184.0" y="505" style="text-anchor:middle">20k steps</text>
+<text class="d-g2 " x="34" y="505" style="text-anchor:start">0</text>
+<text class="d-g2 " x="334" y="421" style="text-anchor:end">ω → α = 1e-4</text>
+<text class="d-g2 " x="38" y="485" style="text-anchor:start">ω = 0</text>
+</svg>
+    </div>
+    <div class="paper-grid">
+      <figure class="card match">
+        <h3 class="ch3">Feature exploration</h3>
+        <img src="img/pca_sex.png" alt="Scatter plot of PCA modes 1 and 2 with marginal distributions; male and female patients form two separate clusters along mode 1" width="900" height="902" loading="lazy">
+        <figcaption>PCA modes 1 + 2 of penultimate-layer features for a multitask model (ImageNet backbone, CheXpert fine-tuning), coloured by biological sex. The clean split along mode 1 shows the backbone encodes sex. Fig. 3.1B of the thesis.</figcaption>
+      </figure>
+      <div class="card info"><h3 class="ch3">How it works</h3><ul>
+        <li><b>Bias analysis:</b> retrain classification heads on CheXpert over frozen and unfrozen XRV and ImageNet backbones. Compare subgroup ROC curves and Youden's J, and project penultimate features with PCA and t-SNE, testing marginal shifts between subgroups with Kolmogorov–Smirnov.</li>
+        <li><b>Label corruption:</b> simulate underdiagnosis by flipping positive findings to "No Finding" for one subgroup (systematic noise), or assign random labels to it (random noise).</li>
+        <li><b>DANN:</b> one shared backbone, three linear heads. Disease loss trains its head and the backbone. Race and sex heads train on frozen features. Once the race head is reliable, its signal is turned against the backbone so the features stop encoding race.</li>
+        <li><b>Two adversaries:</b> gradient negation multiplies the race loss by −ω before it reaches the backbone. Confusion loss instead pushes race predictions towards uniform. ω fades in logistically, so the adversary only acts after 20k steps.</li>
+      </ul></div>
+    </div>
+    <div class="card info"><h3 class="ch3">Findings</h3><ul>
+      <li>Frozen backbones consistently performed worse and showed spurious links between disease predictions and protected attributes.</li>
+      <li>Unfrozen XRV models showed no strong evidence of using sex or race to predict disease, though higher PCA modes carried some subgroup disparities.</li>
+      <li>DANNs nearly restored ROC curves distorted by label noise and removed subgroup shifts in feature space, at the cost of a lower Youden's J than baseline.</li>
+      <li>Gradient negation targeted the race head precisely. Confusion loss also disturbed sex classification, suggesting it reshapes the backbone more broadly.</li>
+    </ul></div>
+    <div><a class="go" href="https://github.com/sorenantebi/chex-aIchemy" target="_blank" rel="noopener">Code and thesis PDF &#8599;</a></div>
+  </div>
+</section>
+
+<div id="whiteout"></div>
+<script src="vision.js?v=1"></script>
+<script src="gallery.js?v=36"></script>
+</body>
+</html>
