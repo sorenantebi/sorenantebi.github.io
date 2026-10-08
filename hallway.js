@@ -181,6 +181,7 @@ const COOLERS = [352, 1430], COOLER_TOP = WALL_BASE + 2 - 54;   // left edge of 
 // red button at the end of the corridor: a cat pops up and spins (OH EE AA EE OO EE)
 const CAT_BTN = [1466, 192, 12, 14], CAT_X = 1462, CAT_BASE = FEET;   // the cat stands in line with the player
 const CAT_SONG_SRC = 'assets/cat_spin_sound.mp3';
+const CAT_VOLUME = 0.5;
 // quiet gaps between the opening phrases (seconds): the cat stands still in these, otherwise it dances to the loudness
 const CAT_LULLS = [[0, 1.5], [3.0, 4.75], [6.2, 7.9], [9.35, 11.1], [12.55, 14.35], [15.8, 17.55], [19.0, 20.75], [27.65, 30.4]];
 const CAT_FORCE = [[30.4, 33.4]];   // a soft phrase right before the first drop: spin even though it's quiet
@@ -732,7 +733,8 @@ function pressCatButton() {
       const src = actx.createMediaElementSource(song);
       analyser = actx.createAnalyser(); analyser.fftSize = 512; analyser.smoothingTimeConstant = 0.6;
       bins = new Uint8Array(analyser.frequencyBinCount);
-      src.connect(analyser); analyser.connect(actx.destination);
+      const vol = actx.createGain(); vol.gain.value = CAT_VOLUME;   // after the analyser, so the dance still reads the full signal
+      src.connect(analyser); analyser.connect(vol); vol.connect(actx.destination);
       song.addEventListener('ended', () => stopParty());
     }
     actx.resume(); song.currentTime = 0; song.play().catch(() => {});
