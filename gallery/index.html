@@ -261,6 +261,17 @@ input[type=range] { accent-color: var(--accent); width: 180px; }
   transform: translateY(2px); box-shadow: 0 1px 0 #120f0b, 0 0 12px rgba(62,224,122,.55); outline: none;
 }
 #directory li button:active { transform: translateY(3px); box-shadow: 0 0 0 #120f0b; }
+/* claims agent pipeline */
+.ag { width: 100%; height: auto; display: block; }
+.ag .b { fill: var(--paper); stroke: var(--ink); stroke-width: 2; }
+.ag .gate { fill: #f8ecd8; } .ag .llm { fill: #ebe6fa; } .ag .val { fill: #e3f2e9; } .ag .store { fill: #eef0ec; } .ag .dec { fill: #fbfaf6; }
+.ag .t { font: 600 15px var(--f-body); fill: var(--ink); text-anchor: middle; }
+.ag .s { font: 400 12px var(--f-body); fill: var(--muted); text-anchor: middle; }
+.ag .s.em { fill: #b4771c; font-weight: 600; }
+.ag .f { stroke: var(--ink); stroke-width: 2; fill: none; } .ag .dash { stroke-dasharray: 6 5; }
+.ag .pill { stroke: var(--ink); stroke-width: 1.5; } .ag .ok { fill: #cfeedd; } .ag .mid { fill: #f8ecd8; } .ag .no { fill: #f6d6d3; }
+.ag .p { font: 500 12px var(--f-body); fill: var(--ink); text-anchor: middle; }
+.ag .trace { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 3 4; } .ag .tr { fill: var(--accent); }
 </style>
 </head>
 <body>
@@ -282,7 +293,7 @@ input[type=range] { accent-color: var(--accent); width: 180px; }
 <!-- Thresholding demo: Otsu + k-means -->
 <section class="panel-room" id="p-threshold" hidden aria-labelledby="th-h">
   <div class="wrap">
-    <div class="bar"><span class="dept">Projects · 03</span><button class="back" data-close>&larr; Gallery</button></div>
+    <div class="bar"><span class="dept">Projects · 04</span><button class="back" data-close>&larr; Gallery</button></div>
     <h2 id="th-h">Otsu &amp; k-means thresholding</h2>
     <p class="lead">Isolating the light strips in a night-time car image, from scratch in C++ without OpenCV. This page runs a line-for-line JavaScript port of that code. It reproduces the compiled C++ output exactly: Otsu gives <b>72</b> (green) and <b>73</b> (red); k-means gives <b>73</b> for both colour channels.</p>
     <div class="controls">
@@ -321,7 +332,7 @@ input[type=range] { accent-color: var(--accent); width: 180px; }
 <!-- Line fit demo -->
 <section class="panel-room" id="p-line" hidden aria-labelledby="ln-h">
   <div class="wrap">
-    <div class="bar"><span class="dept">Projects · 04</span><button class="back" data-close>&larr; Gallery</button></div>
+    <div class="bar"><span class="dept">Projects · 05</span><button class="back" data-close>&larr; Gallery</button></div>
     <h2 id="ln-h">Bright-line fit</h2>
     <p class="lead">Find the brightest pixel in every column, drop columns whose peak intensity is an outlier (z-score above the cutoff), then fit a least-squares line through what remains. At the original cutoff of <b>2.0</b> the port gives slope <b>0.0044</b> and intercept <b>426.25</b>, matching the C++ binary.</p>
     <div class="controls">
@@ -346,7 +357,7 @@ input[type=range] { accent-color: var(--accent); width: 180px; }
 <!-- U-Net -->
 <section class="panel-room" id="p-unet" hidden aria-labelledby="un-h">
   <div class="wrap">
-    <div class="bar"><span class="dept">Projects · 05</span><button class="back" data-close>&larr; Gallery</button></div>
+    <div class="bar"><span class="dept">Projects · 06</span><button class="back" data-close>&larr; Gallery</button></div>
     <div class="meta">C++ · LibTorch · BraTS</div>
     <h2 id="un-h">Brain tumour segmentation with a U-Net in C++</h2>
     <p class="lead">A U-Net written from scratch with LibTorch, the PyTorch C++ API, trained to label every pixel of a 2D brain MRI slice as background, edema, non-enhancing tumour or enhancing tumour. The data comes from BraTS (Medical Segmentation Decathlon, Task 01).</p>
@@ -564,6 +575,53 @@ if (val_loss &lt; best_val_loss) { torch::save(model, best_model_path); }</pre>
 </section>
 
 <!-- Thesis -->
+<section class="panel-room" id="p-agent" hidden aria-labelledby="ag-h">
+  <div class="wrap">
+    <div class="bar"><span class="dept">Projects · 03</span><button class="back" data-close>&larr; Gallery</button></div>
+    <div class="meta">Agentic AI · deterministic rules + LLM reasoning</div>
+    <h2 id="ag-h">Medical Claims Review Agent</h2>
+    <p class="lead">An agent that decides health insurance claims, built deterministic-first: hard rule gates settle what they can, and the LLM is only called for the genuinely interpretive cases, such as whether a policy covers a procedure or needs prior authorisation. Every model decision is checked against the retrieved policy text before anything is executed.</p>
+    <div class="card">
+      <h3 class="ch3">Pipeline · LangGraph</h3>
+      <svg class="ag" viewBox="0 0 1000 420" role="img" aria-labelledby="ag-t ag-d"><title id="ag-t">Claims review pipeline</title><desc id="ag-d">A claim from PostgreSQL first meets four deterministic rule gates: inactive member, diagnosis and procedure code mismatch, missing documentation, and an amount over 5,000 dollars. If a gate fires, the claim is decided without the LLM. Otherwise the insurer's policy is retrieved section by section, Claude reasons over it through the Agent SDK, and a validator checks arguments, citations and overrides before the decision is executed: approve payment, route to a senior reviewer, or deny. OpenTelemetry traces every step, including tokens and cost per call.</desc><defs><marker id="agk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1f2b24"/></marker></defs>
+<rect class="b" x="20" y="60" width="140" height="90" rx="7"/><text class="t" x="90" y="98">Claim</text><text class="s" x="90" y="118">member, codes,</text><text class="s" x="90" y="132">docs, amount</text>
+<rect class="b gate" x="210" y="40" width="190" height="130" rx="7"/><text class="t" x="305" y="64">Rule gates</text><text class="s" x="305" y="86">inactive member</text><text class="s" x="305" y="104">code mismatch</text><text class="s" x="305" y="122">missing documents</text><text class="s" x="305" y="140">amount &gt; $5,000</text><text class="s em" x="305" y="160">no LLM involved</text>
+<rect class="b" x="450" y="60" width="150" height="90" rx="7"/><text class="t" x="525" y="98">Retrieval</text><text class="s" x="525" y="118">insurer policy,</text><text class="s" x="525" y="132">by section</text>
+<rect class="b llm" x="650" y="60" width="150" height="90" rx="7"/><text class="t" x="725" y="98">LLM reasoning</text><text class="s" x="725" y="118">Claude ·</text><text class="s" x="725" y="132">Agent SDK</text>
+<rect class="b val" x="850" y="52" width="130" height="106" rx="7"/><text class="t" x="915" y="84">Validator</text><text class="s" x="915" y="104">arguments,</text><text class="s" x="915" y="118">citations,</text><text class="s" x="915" y="132">overrides</text>
+<path class="f" d="M160,105 L206,105" marker-end="url(#agk)"/><path class="f" d="M400,105 L446,105" marker-end="url(#agk)"/><path class="f" d="M600,105 L646,105" marker-end="url(#agk)"/><path class="f" d="M800,105 L846,105" marker-end="url(#agk)"/>
+<text class="s" x="423" y="96">pass</text>
+<rect class="b dec" x="700" y="220" width="280" height="118" rx="7"/><text class="t" x="840" y="244">Decision</text>
+<rect class="pill ok" x="716" y="256" width="248" height="22" rx="11"/><text class="p" x="840" y="271">approve_claim_payment</text>
+<rect class="pill mid" x="716" y="283" width="248" height="22" rx="11"/><text class="p" x="840" y="298">route_to_senior_reviewer</text>
+<rect class="pill no" x="716" y="310" width="248" height="22" rx="11"/><text class="p" x="840" y="325">deny_claim</text>
+<path class="f" d="M915,158 L915,216" marker-end="url(#agk)"/><text class="s" x="905" y="192" style="text-anchor:end">grounded only</text>
+<path class="f dash" d="M305,170 L305,280 L696,280" marker-end="url(#agk)"/><text class="s" x="500" y="270">a gate fires: decided deterministically</text>
+<rect class="b store" x="20" y="250" width="140" height="56" rx="7"/><text class="t" x="90" y="274">PostgreSQL</text><text class="s" x="90" y="292">claims</text>
+<path class="f" d="M90,250 L90,154" marker-end="url(#agk)"/>
+<rect class="b store" x="450" y="196" width="150" height="40" rx="7"/><text class="s" x="525" y="214">policy PDFs → text,</text><text class="s" x="525" y="228">chunked by section</text>
+<path class="f" d="M525,196 L525,154" marker-end="url(#agk)"/>
+<rect class="trace" x="20" y="366" width="960" height="36" rx="7"/><text class="s tr" x="500" y="389">OpenTelemetry traces every step · tokens and cost per call · optional Langfuse dashboard</text>
+</svg>
+    </div>
+    <div class="paper-grid">
+      <div class="card info"><h3 class="ch3">How it works</h3><ul>
+        <li><b>Deterministic first:</b> four hard gates run before any model call and short-circuit the graph when one fires. Routing was exact on every claim, every run.</li>
+        <li><b>LLM only when needed:</b> Claude handles the interpretive part, reading the matched insurer's full policy, retrieved section by section.</li>
+        <li><b>Grounded before it acts:</b> a validator checks the model's arguments, citations and overrides against the retrieved text. Ungrounded decisions are never executed.</li>
+        <li><b>Observable:</b> OpenTelemetry tracing is always on, with token usage and cost captured per call.</li>
+      </ul></div>
+      <div class="card info"><h3 class="ch3">Evaluation</h3><ul>
+        <li><b>Golden set:</b> an offline harness compares every run against expected decisions.</li>
+        <li><b>Metrics:</b> grounding recall, hallucination rate and consistency under repeated runs.</li>
+        <li><b>Regression guards:</b> genuinely ambiguous claims are kept as permanent test cases.</li>
+        <li><b>Scope:</b> a local reference implementation on 19 test claims and per-insurer policy documents; the production integration is designed but not built.</li>
+      </ul></div>
+    </div>
+    <div><a class="go" href="https://github.com/sorenantebi/claims-review-agent" target="_blank" rel="noopener">Code on GitHub &#8599;</a></div>
+  </div>
+</section>
+
 <section class="panel-room" id="p-thesis" hidden aria-labelledby="ts-h">
   <div class="wrap">
     <div class="bar"><span class="dept">Projects · 02</span><button class="back" data-close>&larr; Gallery</button></div>
@@ -659,6 +717,6 @@ if (val_loss &lt; best_val_loss) { torch::save(model, best_model_path); }</pre>
 
 <div id="whiteout"></div>
 <script src="vision.js?v=1"></script>
-<script src="gallery.js?v=37"></script>
+<script src="gallery.js?v=40"></script>
 </body>
 </html>

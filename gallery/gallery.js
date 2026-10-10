@@ -3,16 +3,17 @@ const $ = s => document.querySelector(s);
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const coarse = matchMedia('(pointer: coarse)').matches;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const W = 1480, H = 360, WALL_BASE = 280, FEET = 312;
+const W = 1680, H = 360, WALL_BASE = 280, FEET = 312;
 const DOOR_X = 40, DOOR_W = 36, DOOR_H = 70, DOOR_Y = WALL_BASE - DOOR_H;
 const SPR_FOOT = 61, SPR_CX = 34, START_X = 140;
 
 const EXHIBITS = [
   { id: 'paper', x: 480, lines: ['SLATE TILE', 'RE-ID'], sub: 'DEEP FEATURE MATCHING', panel: 'p-paper', dir: 'Slate tiles · deep feature matching', kind: 'Paper' },
   { id: 'thesis', x: 680, lines: ['CHEST X-RAY', 'BIAS'], sub: 'ADVERSARIAL DEEP LEARNING', panel: 'p-thesis', dir: 'Chest X-ray bias · adversarial DL', kind: 'Thesis' },
-  { id: 'otsu', x: 880, lines: ['OTSU &', 'K-MEANS'], sub: 'C++ · THRESHOLDING', panel: 'p-threshold', method: 'otsu', dir: 'Otsu & k-means', kind: 'Live demo' },
-  { id: 'line', x: 1080, lines: ['BRIGHT-LINE', 'FIT'], sub: 'C++ · REGRESSION', panel: 'p-line', dir: 'Bright-line fit', kind: 'Live demo' },
-  { id: 'unet', x: 1280, lines: ['BRAIN TUMOUR', 'SEGMENTATION'], sub: 'C++ · U-NET', panel: 'p-unet', dir: 'Brain tumour U-Net', kind: 'C++' },
+  { id: 'agent', x: 880, lines: ['CLAIMS REVIEW', 'AGENT'], sub: 'LLM + RULE GATES', panel: 'p-agent', dir: 'Medical claims · LLM agent', kind: 'Agent' },
+  { id: 'otsu', x: 1080, lines: ['OTSU &', 'K-MEANS'], sub: 'C++ · THRESHOLDING', panel: 'p-threshold', method: 'otsu', dir: 'Otsu & k-means', kind: 'Live demo' },
+  { id: 'line', x: 1280, lines: ['BRIGHT-LINE', 'FIT'], sub: 'C++ · REGRESSION', panel: 'p-line', dir: 'Bright-line fit', kind: 'Live demo' },
+  { id: 'unet', x: 1480, lines: ['BRAIN TUMOUR', 'SEGMENTATION'], sub: 'C++ · U-NET', panel: 'p-unet', dir: 'Brain tumour U-Net', kind: 'C++' },
 ];
 
 /* ---------- assets ---------- */
@@ -63,6 +64,30 @@ function maxThumb(src, w, h, crop, keep, colorFor) {
   g.putImageData(out, 0, 0);
   return t;
 }
+// claims agent painting: document -> rule gate -> LLM node -> validated decision
+function agentArt() {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 44;
+  const g = c.getContext('2d'), R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+  R(0, 0, 64, 44, '#1d2a24'); R(0, 34, 64, 10, '#22342b');
+  // claim form
+  R(3, 12, 12, 16, '#f3ede1'); R(11, 12, 4, 4, '#c9c4b6'); [16, 19, 22, 25].forEach(y => R(5, y, 7, 1, '#7d8a82')); R(5, 16, 4, 1, '#e0534a');
+  // arrows
+  const arrow = (x, y, w) => { R(x, y, w, 1, '#c9c4b6'); R(x + w - 2, y - 1, 1, 3, '#c9c4b6'); };
+  arrow(16, 20, 5);
+  // rule gate: amber diamond
+  for (let i = 0; i < 6; i++) { R(27 - i, 14 + i, 1 + i * 2, 1, '#e6a33a'); R(27 - i, 25 - i, 1 + i * 2, 1, '#e6a33a'); }
+  R(26, 18, 3, 4, '#1d2a24'); R(27, 19, 1, 1, '#f3ede1');
+  arrow(34, 20, 5);
+  // LLM node: violet chip with a spark
+  R(40, 14, 12, 12, '#7a67c9'); R(41, 15, 10, 10, '#9b8ae0'); [42, 45, 48].forEach(x => { R(x, 12, 1, 2, '#7a67c9'); R(x, 26, 1, 2, '#7a67c9'); });
+  R(45, 17, 2, 6, '#f3ede1'); R(43, 19, 6, 2, '#f3ede1');
+  arrow(53, 20, 3);
+  // validated decision: green check
+  R(57, 15, 6, 10, '#2f6b4f'); R(58, 20, 1, 1, '#3fbf73'); R(59, 21, 1, 1, '#3fbf73'); R(60, 20, 1, 1, '#3fbf73'); R(61, 18, 1, 2, '#3fbf73');
+  // trace line along the bottom (observability)
+  for (let x = 4; x < 60; x += 4) R(x, 38, 2, 1, '#3fbf73');
+  return c;
+}
 function buildArt() {
   const otsuT = Vision.otsu(HIST.red).threshold;
   return {
@@ -75,6 +100,7 @@ function buildArt() {
       g.strokeStyle = '#ffffff'; g.lineWidth = 9; g.beginPath(); g.moveTo(0, LINE0.intercept); g.lineTo(c.width, LINE0.slope * c.width + LINE0.intercept); g.stroke();
       return thumb(c, 64, 48, gain(1.25));
     })(),
+    agent: agentArt(),
     paper: IMG.match,
     thesis: IMG.pca,
     unet: thumb(IMG.brain, 48, 48, d => { for (let i = 0; i < d.length; i += 4) { const v = Math.min(1, d[i] / 255 * 1.5); d[i] = 191 * v; d[i + 1] = 238 * v; d[i + 2] = 255 * v; } }),
@@ -121,8 +147,8 @@ function paint(art) {
     drawExhibit(g, ex, art);
   }
   // furniture
-  if (IMG.bench) g.drawImage(IMG.bench, 755, WALL_BASE + 8 - IMG.bench.height);
-  if (IMG.bench) g.drawImage(IMG.bench, 1155, WALL_BASE + 8 - IMG.bench.height);
+  if (IMG.bench) g.drawImage(IMG.bench, 955, WALL_BASE + 8 - IMG.bench.height);
+  if (IMG.bench) g.drawImage(IMG.bench, 1355, WALL_BASE + 8 - IMG.bench.height);
   if (IMG.plant) { g.drawImage(IMG.plant, 262, WALL_BASE + 2 - IMG.plant.height); g.drawImage(IMG.plant, W - 60, WALL_BASE + 2 - IMG.plant.height); }
 }
 function frameAround(g, x, y, w, h) {
@@ -267,7 +293,7 @@ function render() {
   }
   drawPlayer(ctx, ox);
   exitPlaque.style.left = sx(DOOR_X + DOOR_W / 2) + 'px'; exitPlaque.style.top = sy(176) + 'px';
-  directory.style.left = sx(98) + 'px'; directory.style.top = sy(54) + 'px';
+  directory.style.left = sx(98) + 'px'; directory.style.top = sy(34) + 'px';
   EXHIBITS.forEach((ex, i) => { exEls[i].style.left = sx(ex.x) + 'px'; exEls[i].style.top = sy(194) + 'px'; });
   const n = busy || openPanel ? null : nearTarget();
   if (n) {
